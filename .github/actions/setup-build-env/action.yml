@@ -44,14 +44,6 @@ inputs:
     description: 'Whether to install DCGM (requires sudo, may fail in some environments)'
     required: false
     default: 'false'
-  replace-imports:
-    description: 'Whether to replace GitLab imports with GitHub imports'
-    required: false
-    default: 'true'
-  generate-protos:
-    description: 'Whether to generate protocol buffers'
-    required: false
-    default: 'true'
 
 runs:
   using: 'composite'
@@ -68,10 +60,3 @@ runs:
         protoc-gen-go-grpc-version: ${{ inputs.protoc-gen-go-grpc-version }}
         shellcheck-version: ${{ inputs.shellcheck-version }}
         install-dcgm: ${{ inputs.install-dcgm }}
-
-    - name: Replace GitLab imports
-      if: inputs.replace-imports == 'true'
-      uses: ./.github/actions/replace-gitlab-imports
-      with:
-        generate-protos: ${{ inputs.generate-protos }}
-

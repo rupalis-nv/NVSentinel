@@ -67,7 +67,7 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 helm plugin install https://github.com/chartmuseum/helm-push || true
 
 # Install Protocol Buffers (version matching CI)
-wget https://github.com/protocolbuffers/protobuf/releases/download/v27.1/protoc-27.1-linux-x86_64.zip
+wget -q https://github.com/protocolbuffers/protobuf/releases/download/v27.1/protoc-27.1-linux-x86_64.zip
 unzip -o protoc-27.1-linux-x86_64.zip -d protoc-27.1-linux-x86_64
 cp protoc-27.1-linux-x86_64/bin/protoc /usr/local/bin/
 mkdir -p /usr/local/bin/include/google
@@ -78,7 +78,7 @@ rm -rf protoc*
 python3 -m pip install --break-system-packages grpcio grpcio-tools
 
 # Install NVIDIA DCGM
-wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb
+wget -q https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb
 dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb
 apt-get install -y datacenter-gpu-manager=1:3.3.5
 

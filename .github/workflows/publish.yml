@@ -60,8 +60,6 @@ jobs:
           protoc-gen-go-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_version }}
           protoc-gen-go-grpc-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_grpc_version }}
           shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
-          replace-imports: 'true'
-          generate-protos: 'true'
 
       - name: Build image list
         id: build-list
@@ -128,8 +126,6 @@ jobs:
           protoc-gen-go-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_version }}
           protoc-gen-go-grpc-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_grpc_version }}
           shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
-          replace-imports: 'true'
-          generate-protos: 'true'
 
       - name: Publish container for ${{ matrix.component }}
         uses: ./.github/actions/publish-container

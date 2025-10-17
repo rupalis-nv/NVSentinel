@@ -26,7 +26,7 @@ open http://localhost:9090
 
 | Variable | Required | Default | Description                    |
 |----------|----------|---------|--------------------------------|
-| `NVSENTINEL_VERSION` | ✅ | _none_ | Chart version (e.g., `v0.5.0`) |
+| `NVSENTINEL_VERSION` | ✅ | _none_ | Chart version (e.g., `v0.1.0`) |
 | `NVSENTINEL_VALUES` | ❌ | `./values-release.yaml` | Custom values file             |
 | `NUM_GPU_NODES` | ❌ | `50` | Number of fake GPU nodes       |
 

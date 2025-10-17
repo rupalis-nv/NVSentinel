@@ -8,6 +8,10 @@
 
 NVSentinel is a comprehensive collection of Kubernetes services that automatically detect, classify, and remediate hardware and software faults in GPU nodes. Designed for GPU clusters, it ensures maximum uptime and seamless fault recovery in high-performance computing environments.
 
+> [!WARNING]
+> **Experimental Preview Release**
+> This is an experimental/preview release of NVSentinel. Use at your own risk in production environments. The software is provided "as is" without warranties of any kind. Features, APIs, and configurations may change without notice in future releases. For production deployments, thoroughly test in non-critical environments first.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -48,7 +52,7 @@ helm search repo oci://ghcr.io/nvidia/nvsentinel --versions
 - **📊 Persistent Storage**: MongoDB-based event store with change streams for real-time updates
 - **🛡️ Graceful Handling**: Coordinated workload eviction with configurable timeouts
 
-## Getting started
+## 🧪 Quick test with any Kubernetes cluster
 
 **Prerequisites**: Kubernetes 1.25+, Helm 3.0+, NVIDIA GPU Operator installed
 
@@ -87,7 +91,7 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
 Now install NVSentinel itself. Use the latest stable version from the releases page:
 
 ```bash
-NVSENTINEL_VERSION=v0.5.0  # Check releases for latest version
+NVSENTINEL_VERSION=v0.1.0  # Check releases for latest version
 BASE_DIR="$(pwd)"
 
 helm upgrade --install nvsentinel oci://ghcr.io/nvidia/nvsentinel \
@@ -111,7 +115,7 @@ kubectl get pods -n nvsentinel
 kubectl get nodes  # Should show your GPU nodes
 
 # Run comprehensive validation
-./scripts/validate-nvsentinel.sh --version v0.5.0 --verbose
+./scripts/validate-nvsentinel.sh --version v0.1.0 --verbose
 ```
 
 > **Tip**: Use the [`scripts/validate-nvsentinel.sh`](scripts/validate-nvsentinel.sh) script for comprehensive deployment validation including image versions, pod health, and certificate status.

@@ -83,7 +83,6 @@ jobs:
           protoc-gen-go-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_version }}
           protoc-gen-go-grpc-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_grpc_version }}
           shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
-          replace-imports: ${{ matrix.replace_imports || 'true' }}
 
       - name: ${{ matrix.step_name }}
         run: ${{ matrix.make_command }}
@@ -116,7 +115,6 @@ jobs:
           protoc-gen-go-grpc-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_grpc_version }}
           shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
           install-dcgm: ${{ matrix.install_dcgm || 'false' }}
-          replace-imports: ${{ matrix.replace_imports || 'true' }}
 
       - name: Run lint and test
         run: make -C health-monitors/${{ matrix.component }} lint-test

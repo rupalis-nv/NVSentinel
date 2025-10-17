@@ -130,7 +130,7 @@ runs:
           echo "Installing Protocol Buffers ${{ inputs.protobuf-version }}"
           PROTOBUF_VERSION="${{ inputs.protobuf-version }}"
           PROTOBUF_VERSION_NO_V="${PROTOBUF_VERSION#v}"
-          wget https://github.com/protocolbuffers/protobuf/releases/download/${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION_NO_V}-linux-x86_64.zip
+          wget -q https://github.com/protocolbuffers/protobuf/releases/download/${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION_NO_V}-linux-x86_64.zip
           unzip protoc-${PROTOBUF_VERSION_NO_V}-linux-x86_64.zip -d protoc-${PROTOBUF_VERSION_NO_V}-linux-x86_64
           sudo cp protoc-${PROTOBUF_VERSION_NO_V}-linux-x86_64/bin/protoc /usr/local/bin/
           sudo mkdir -p /usr/local/include/google
@@ -199,6 +199,6 @@ runs:
         echo "gotestsum: $(gotestsum --version)"
         echo "protoc: $(protoc --version)"
         echo "shellcheck: $(shellcheck --version | head -n 2)"
-        echo "addlicense: $(addlicense --version 2>&1 || echo 'installed')"
-        echo "goimports: $(goimports --help 2>&1 | head -n 1 || echo 'installed')"
+        echo "addlicense: $(addlicense >/dev/null 2>&1 || echo 'installed')"
+        echo "goimports: $(goimports --help >/dev/null 2>&1 || echo 'installed')"
         echo "==================================="
