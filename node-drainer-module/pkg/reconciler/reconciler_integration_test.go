@@ -22,6 +22,7 @@ import (
 
 	"github.com/nvidia/nvsentinel/node-drainer-module/pkg/config"
 	"github.com/nvidia/nvsentinel/node-drainer-module/pkg/informers"
+	"github.com/nvidia/nvsentinel/node-drainer-module/pkg/queue"
 	"github.com/nvidia/nvsentinel/node-drainer-module/pkg/reconciler"
 	storeconnector "github.com/nvidia/nvsentinel/platform-connectors/pkg/connectors/store"
 	platform_connectors "github.com/nvidia/nvsentinel/platform-connectors/pkg/protos"
@@ -40,35 +41,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-type MockMongoCollection struct {
-	UpdateOneFunc func(ctx context.Context, filter any, update any, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
-	FindOneFunc   func(ctx context.Context, filter any, opts ...*options.FindOneOptions) *mongo.SingleResult
-	FindFunc      func(ctx context.Context, filter any, opts ...*options.FindOptions) (*mongo.Cursor, error)
-}
-
-func (m *MockMongoCollection) UpdateOne(ctx context.Context, filter any, update any, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
-	if m.UpdateOneFunc != nil {
-		return m.UpdateOneFunc(ctx, filter, update, opts...)
-	}
-	return &mongo.UpdateResult{ModifiedCount: 1}, nil
-}
-
-func (m *MockMongoCollection) FindOne(ctx context.Context, filter any, opts ...*options.FindOneOptions) *mongo.SingleResult {
-	if m.FindOneFunc != nil {
-		return m.FindOneFunc(ctx, filter, opts...)
-	}
-	return &mongo.SingleResult{}
-}
-
-func (m *MockMongoCollection) Find(ctx context.Context, filter any, opts ...*options.FindOptions) (*mongo.Cursor, error) {
-	if m.FindFunc != nil {
-		return m.FindFunc(ctx, filter, opts...)
-	}
-	return nil, nil
-}
-
 // go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 // source <(setup-envtest use -p env)
+//
+// TestReconciler_ProcessEvent tests the reconciler's ProcessEvent method directly (without queue).
+// Each test case validates a specific draining scenario: immediate eviction, force draining,
+// unquarantined events, allow completion mode, terminal states, already drained nodes, daemonsets, etc.
 func TestReconciler_ProcessEvent(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -95,10 +73,11 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 					Status:     v1.PodStatus{Phase: v1.PodRunning},
 				},
 			},
-			expectError:       false,
+			expectError:       true,
 			expectedNodeLabel: ptr.To(string(statemanager.DrainingLabelValue)),
 			validateFunc: func(t *testing.T, client kubernetes.Interface, ctx context.Context, nodeName string, err error) {
-				assert.NoError(t, err)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "immediate eviction completed, requeuing for status verification")
 				require.Eventually(t, func() bool {
 					pods, _ := client.CoreV1().Pods("immediate-test").List(ctx, metav1.ListOptions{})
 					activePodsCount := 0
@@ -130,10 +109,11 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 					Status:     v1.PodStatus{Phase: v1.PodRunning},
 				},
 			},
-			expectError:       false,
+			expectError:       true,
 			expectedNodeLabel: ptr.To(string(statemanager.DrainingLabelValue)),
 			validateFunc: func(t *testing.T, client kubernetes.Interface, ctx context.Context, nodeName string, err error) {
-				assert.NoError(t, err)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "immediate eviction completed, requeuing for status verification")
 				// Both namespaces should have pods evicted due to force override
 				require.Eventually(t, func() bool {
 					pods1, _ := client.CoreV1().Pods("completion-test").List(ctx, metav1.ListOptions{
@@ -265,16 +245,16 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 					Status: v1.PodStatus{Phase: v1.PodRunning},
 				},
 			},
-			expectError:       false,
-			expectedNodeLabel: ptr.To(string(statemanager.DrainSucceededLabelValue)),
+			expectError:       true,
+			expectedNodeLabel: ptr.To(string(statemanager.DrainingLabelValue)),
 			validateFunc: func(t *testing.T, client kubernetes.Interface, ctx context.Context, nodeName string, err error) {
-				assert.NoError(t, err)
-				// DaemonSet pod should remain
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "immediate eviction completed, requeuing for status verification")
 				require.Eventually(t, func() bool {
 					pods, _ := client.CoreV1().Pods("immediate-test").List(ctx, metav1.ListOptions{})
 					t.Logf("Pods remaining after eviction: %d", len(pods.Items))
 					return len(pods.Items) == 1
-				}, 30*time.Second, 1*time.Second, "only daemonset pod should remain")
+				}, 30*time.Second, 1*time.Second)
 			},
 		},
 		{
@@ -294,10 +274,11 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 					Status:     v1.PodStatus{Phase: v1.PodRunning},
 				},
 			},
-			expectError:       false,
+			expectError:       true,
 			expectedNodeLabel: ptr.To(string(statemanager.DrainingLabelValue)),
 			validateFunc: func(t *testing.T, client kubernetes.Interface, ctx context.Context, nodeName string, err error) {
-				assert.NoError(t, err)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "immediate eviction completed, requeuing for status verification")
 				require.Eventually(t, func() bool {
 					pods, _ := client.CoreV1().Pods("immediate-test").List(ctx, metav1.ListOptions{
 						FieldSelector: fmt.Sprintf("spec.nodeName=%s", nodeName),
@@ -317,124 +298,37 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			testEnv := envtest.Environment{}
-			timeout, poll := 60*time.Second, 1*time.Second
-
-			cfg, err := testEnv.Start()
-			require.NoError(t, err, "failed to setup envtest")
-			defer testEnv.Stop()
-
-			client, err := kubernetes.NewForConfig(cfg)
-			require.NoError(t, err, "failed to create kubernetes client")
+			setup := setupDirectTest(t, []config.UserNamespace{
+				{Name: "immediate-*", Mode: config.ModeImmediateEvict},
+				{Name: "completion-*", Mode: config.ModeAllowCompletion},
+				{Name: "timeout-*", Mode: config.ModeDeleteAfterTimeout},
+			}, false)
 
 			nodeLabels := tt.existingNodeLabels
 			if nodeLabels == nil {
 				nodeLabels = map[string]string{"test-label": "test-value"}
 			}
-			node := &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   tt.nodeName,
-					Labels: nodeLabels,
-				},
-				Status: v1.NodeStatus{
-					Conditions: []v1.NodeCondition{
-						{Type: v1.NodeReady, Status: v1.ConditionTrue},
-					},
-				},
-			}
-			_, err = client.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
-			require.NoError(t, err, "failed to create test node")
+			createNodeWithLabels(setup.ctx, t, setup.client, tt.nodeName, nodeLabels)
 
 			for _, ns := range tt.namespaces {
-				namespace := &v1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{Name: ns},
-				}
-				_, err = client.CoreV1().Namespaces().Create(ctx, namespace, metav1.CreateOptions{})
-				require.NoError(t, err, "failed to create namespace %s", ns)
+				createNamespace(setup.ctx, t, setup.client, ns)
 			}
 
 			for _, pod := range tt.pods {
-				po, err := client.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
-				require.NoError(t, err, "failed to create pod %s", pod.Name)
-
-				po.Status = pod.Status
-				_, err = client.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, po, metav1.UpdateOptions{})
-				require.NoError(t, err, "failed to update pod status")
+				createPod(setup.ctx, t, setup.client, pod.Namespace, pod.Name, tt.nodeName, pod.Status.Phase)
 			}
 
-			informersInstance, err := informers.NewInformers(client, 1*time.Minute, ptr.To(2), false)
-			require.NoError(t, err)
-
-			go func() {
-				if err := informersInstance.Run(ctx); err != nil {
-					t.Errorf("Failed to run informers: %v", err)
-				}
-			}()
-
-			require.Eventually(t, func() bool {
-				return informersInstance.HasSynced()
-			}, 30*time.Second, 1*time.Second, "informers should be synced")
-
-			tomlConfig := config.TomlConfig{
-				EvictionTimeoutInSeconds:  config.Duration{Duration: 30 * time.Second},
-				SystemNamespaces:          "kube-*",
-				DeleteAfterTimeoutMinutes: 5,
-				NotReadyTimeoutMinutes:    2,
-				UserNamespaces: []config.UserNamespace{
-					{Name: "immediate-*", Mode: config.ModeImmediateEvict},
-					{Name: "completion-*", Mode: config.ModeAllowCompletion},
-					{Name: "timeout-*", Mode: config.ModeDeleteAfterTimeout},
-				},
-			}
-
-			reconcilerConfig := config.ReconcilerConfig{
-				TomlConfig:    tomlConfig,
-				MongoConfig:   storewatcher.MongoDBConfig{},
-				TokenConfig:   storewatcher.TokenConfig{},
-				MongoPipeline: mongo.Pipeline{},
-				StateManager:  statemanager.NewStateManager(client),
-			}
-
-			r := reconciler.NewReconciler(reconcilerConfig, false, client, informersInstance)
-
-			mockCollection := &MockMongoCollection{}
 			if tt.mongoFindOneResponse != nil {
-				mockCollection.FindOneFunc = func(ctx context.Context, filter any, opts ...*options.FindOneOptions) *mongo.SingleResult {
+				setup.mockCollection.FindOneFunc = func(ctx context.Context, filter any, opts ...*options.FindOneOptions) *mongo.SingleResult {
 					return mongo.NewSingleResultFromDocument(*tt.mongoFindOneResponse, nil, nil)
 				}
 			}
 
-			healthEvent := &storeconnector.HealthEventWithStatus{
-				HealthEvent: &platform_connectors.HealthEvent{
-					NodeName:  tt.nodeName,
-					CheckName: "test-check",
-				},
-				HealthEventStatus: storeconnector.HealthEventStatus{
-					NodeQuarantined: &tt.nodeQuarantined,
-					UserPodsEvictionStatus: storeconnector.OperationStatus{
-						Status: storeconnector.StatusInProgress,
-					},
-				},
-				CreatedAt: time.Now(),
-			}
-
-			if tt.drainForce {
-				healthEvent.HealthEvent.DrainOverrides = &platform_connectors.BehaviourOverrides{
-					Force: true,
-				}
-			}
-
-			event := bson.M{
-				"fullDocument": bson.M{
-					"_id":               "test-event-id",
-					"healthevent":       healthEvent.HealthEvent,
-					"healtheventstatus": healthEvent.HealthEventStatus,
-					"createdAt":         healthEvent.CreatedAt,
-				},
-			}
-
-			err = r.ProcessEvent(ctx, event, mockCollection, tt.nodeName)
+			err := processHealthEvent(setup.ctx, t, setup.reconciler, setup.mockCollection, healthEventOptions{
+				nodeName:        tt.nodeName,
+				nodeQuarantined: tt.nodeQuarantined,
+				drainForce:      tt.drainForce,
+			})
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -444,7 +338,7 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 
 			if tt.expectedNodeLabel != nil {
 				require.Eventually(t, func() bool {
-					node, err := client.CoreV1().Nodes().Get(ctx, tt.nodeName, metav1.GetOptions{})
+					node, err := setup.client.CoreV1().Nodes().Get(setup.ctx, tt.nodeName, metav1.GetOptions{})
 					require.NoError(t, err)
 
 					label, exists := node.Labels[statemanager.NVSentinelStateLabelKey]
@@ -452,236 +346,189 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 						return true
 					}
 					return exists && label == *tt.expectedNodeLabel
-				}, timeout, poll, "node label should be %s", *tt.expectedNodeLabel)
+				}, 60*time.Second, 1*time.Second, "node label should be %s", *tt.expectedNodeLabel)
 			}
 
 			if tt.validateFunc != nil {
-				tt.validateFunc(t, client, ctx, tt.nodeName, err)
+				tt.validateFunc(t, setup.client, setup.ctx, tt.nodeName, err)
 			}
 		})
 	}
 }
 
-func TestReconciler_EvictionModes(t *testing.T) {
-	tests := []struct {
-		name             string
-		namespaceMode    config.EvictMode
-		namespaceName    string
-		nodeName         string
-		pods             []*v1.Pod
-		expectedBehavior string
-		expectError      bool
-		skipIfNoEnvtest  bool
-	}{
-		{
-			name:          "Immediate mode triggers eviction",
-			namespaceMode: config.ModeImmediateEvict,
-			namespaceName: "immediate-evict-ns",
-			nodeName:      "evict-test-node",
-			pods: []*v1.Pod{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "evict-pod", Namespace: "immediate-evict-ns"},
-					Spec:       v1.PodSpec{NodeName: "evict-test-node", Containers: []v1.Container{{Name: "c", Image: "nginx"}}},
-					Status:     v1.PodStatus{Phase: v1.PodRunning},
-				},
-			},
-			expectedBehavior: "evict",
-			expectError:      false,
-		},
-		{
-			name:          "AllowCompletion mode waits for pods",
-			namespaceMode: config.ModeAllowCompletion,
-			namespaceName: "completion-wait-ns",
-			nodeName:      "wait-test-node",
-			pods: []*v1.Pod{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "wait-pod", Namespace: "completion-wait-ns"},
-					Spec:       v1.PodSpec{NodeName: "wait-test-node", Containers: []v1.Container{{Name: "c", Image: "nginx"}}},
-					Status:     v1.PodStatus{Phase: v1.PodRunning},
-				},
-			},
-			expectedBehavior: "wait",
-			expectError:      true,
-		},
-		{
-			name:          "DeleteAfterTimeout mode starts timeout",
-			namespaceMode: config.ModeDeleteAfterTimeout,
-			namespaceName: "timeout-delete-ns",
-			nodeName:      "timeout-test-node",
-			pods: []*v1.Pod{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "timeout-pod", Namespace: "timeout-delete-ns"},
-					Spec:       v1.PodSpec{NodeName: "timeout-test-node", Containers: []v1.Container{{Name: "c", Image: "nginx"}}},
-					Status:     v1.PodStatus{Phase: v1.PodRunning},
-				},
-			},
-			expectedBehavior: "timeout",
-			expectError:      true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			testEnv := envtest.Environment{}
-
-			cfg, err := testEnv.Start()
-			require.NoError(t, err, "failed to setup envtest")
-			defer testEnv.Stop()
-
-			client, err := kubernetes.NewForConfig(cfg)
-			require.NoError(t, err, "failed to create kubernetes client")
-
-			node := &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{Name: tt.nodeName, Labels: map[string]string{"test-label": "test-value"}},
-				Status:     v1.NodeStatus{Conditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionTrue}}},
-			}
-			_, err = client.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
-			require.NoError(t, err)
-
-			ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: tt.namespaceName}}
-			_, err = client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
-			require.NoError(t, err)
-
-			for _, pod := range tt.pods {
-				po, err := client.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
-				require.NoError(t, err)
-				po.Status = pod.Status
-				_, err = client.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, po, metav1.UpdateOptions{})
-				require.NoError(t, err)
-			}
-
-			tomlConfig := config.TomlConfig{
-				EvictionTimeoutInSeconds:  config.Duration{Duration: 30 * time.Second},
-				SystemNamespaces:          "kube-*",
-				DeleteAfterTimeoutMinutes: 5,
-				NotReadyTimeoutMinutes:    2,
-				UserNamespaces: []config.UserNamespace{
-					{Name: tt.namespaceName, Mode: tt.namespaceMode},
-				},
-			}
-
-			reconcilerConfig := config.ReconcilerConfig{
-				TomlConfig:    tomlConfig,
-				MongoConfig:   storewatcher.MongoDBConfig{},
-				TokenConfig:   storewatcher.TokenConfig{},
-				MongoPipeline: mongo.Pipeline{},
-				StateManager:  statemanager.NewStateManager(client),
-			}
-
-			informersInstance, err := informers.NewInformers(client, 1*time.Minute, ptr.To(2), false)
-			require.NoError(t, err)
-
-			go func() {
-				_ = informersInstance.Run(ctx)
-			}()
-
-			require.Eventually(t, func() bool {
-				return informersInstance.HasSynced()
-			}, 30*time.Second, 1*time.Second, "informers should be synced")
-
-			r := reconciler.NewReconciler(reconcilerConfig, false, client, informersInstance)
-			mockCollection := &MockMongoCollection{}
-
-			healthEvent := &storeconnector.HealthEventWithStatus{
-				HealthEvent: &platform_connectors.HealthEvent{NodeName: tt.nodeName, CheckName: "test"},
-				HealthEventStatus: storeconnector.HealthEventStatus{
-					NodeQuarantined:        ptr.To(storeconnector.Quarantined),
-					UserPodsEvictionStatus: storeconnector.OperationStatus{Status: storeconnector.StatusInProgress},
-				},
-				CreatedAt: time.Now(),
-			}
-
-			event := bson.M{
-				"fullDocument": bson.M{
-					"_id":               "test-id",
-					"healthevent":       healthEvent.HealthEvent,
-					"healtheventstatus": healthEvent.HealthEventStatus,
-					"createdAt":         healthEvent.CreatedAt,
-				},
-			}
-
-			err = r.ProcessEvent(ctx, event, mockCollection, tt.nodeName)
-
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			switch tt.expectedBehavior {
-			case "evict":
-				require.Eventually(t, func() bool {
-					pods, listErr := client.CoreV1().Pods(tt.namespaceName).List(ctx, metav1.ListOptions{
-						FieldSelector: fmt.Sprintf("spec.nodeName=%s", tt.nodeName),
-					})
-					if listErr != nil {
-						return false
-					}
-					// Count pods that don't have DeletionTimestamp (i.e., not being deleted)
-					activePodsCount := 0
-					for _, pod := range pods.Items {
-						if pod.DeletionTimestamp == nil {
-							activePodsCount++
-						}
-					}
-					return activePodsCount == 0
-				}, 30*time.Second, 1*time.Second, "All pods should be evicted in immediate mode")
-			case "wait":
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "waiting for pods to complete", "Error should indicate waiting for pod completion")
-
-				nodeEvents, eventErr := client.CoreV1().Events(metav1.NamespaceDefault).List(ctx, metav1.ListOptions{
-					FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Node", tt.nodeName),
-				})
-				require.NoError(t, eventErr)
-				require.Greater(t, len(nodeEvents.Items), 0, "Node event should be created")
-				assert.Equal(t, "AwaitingPodCompletion", nodeEvents.Items[0].Reason)
-			case "timeout":
-				assert.Error(t, err)
-				// Pods should still exist as timeout hasn't elapsed yet
-				pods, listErr := client.CoreV1().Pods(tt.namespaceName).List(ctx, metav1.ListOptions{
-					FieldSelector: fmt.Sprintf("spec.nodeName=%s", tt.nodeName),
-				})
-				require.NoError(t, listErr)
-				assert.Greater(t, len(pods.Items), 0, "Pods should still exist during timeout period")
-			}
-		})
-	}
-}
-
+// TestReconciler_DryRunMode validates that dry-run mode doesn't actually evict pods,
+// only simulates the eviction and logs what would happen.
 func TestReconciler_DryRunMode(t *testing.T) {
-	ctx := context.Background()
-	testEnv := envtest.Environment{}
-
-	cfg, err := testEnv.Start()
-	require.NoError(t, err, "failed to setup envtest")
-	defer testEnv.Stop()
-
-	client, err := kubernetes.NewForConfig(cfg)
-	require.NoError(t, err, "failed to create kubernetes client")
+	setup := setupDirectTest(t, []config.UserNamespace{
+		{Name: "immediate-*", Mode: config.ModeImmediateEvict},
+	}, true)
 
 	nodeName := "dry-run-node"
-	node := &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: nodeName, Labels: map[string]string{"test-label": "test-value"}},
-		Status:     v1.NodeStatus{Conditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionTrue}}},
-	}
-	_, err = client.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
-	require.NoError(t, err)
+	createNode(setup.ctx, t, setup.client, nodeName)
+	createNamespace(setup.ctx, t, setup.client, "immediate-test")
+	createPod(setup.ctx, t, setup.client, "immediate-test", "dry-pod", nodeName, v1.PodRunning)
+
+	err := processHealthEvent(setup.ctx, t, setup.reconciler, setup.mockCollection, healthEventOptions{
+		nodeName:        nodeName,
+		nodeQuarantined: storeconnector.Quarantined,
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "immediate eviction completed, requeuing for status verification")
+
+	require.Eventually(t, func() bool {
+		pods, err := setup.client.CoreV1().Pods("immediate-test").List(setup.ctx, metav1.ListOptions{})
+		if err != nil {
+			return false
+		}
+		return len(pods.Items) == 1
+	}, 30*time.Second, 1*time.Second)
+}
+
+// TestReconciler_RequeueMechanism validates that the queue requeues events for multi-step workflows.
+// Tests immediate eviction triggers requeue, pods get evicted, and node transitions to drain-succeeded.
+func TestReconciler_RequeueMechanism(t *testing.T) {
+	setup := setupRequeueTest(t, []config.UserNamespace{
+		{Name: "immediate-*", Mode: config.ModeImmediateEvict},
+	})
+
+	nodeName := "requeue-node"
+	createNode(setup.ctx, t, setup.client, nodeName)
 
 	ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "immediate-test"}}
-	_, err = client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	_, err := setup.client.CoreV1().Namespaces().Create(setup.ctx, ns, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: "dry-pod", Namespace: "immediate-test"},
-		Spec:       v1.PodSpec{NodeName: nodeName, Containers: []v1.Container{{Name: "c", Image: "nginx"}}},
-		Status:     v1.PodStatus{Phase: v1.PodRunning},
-	}
-	po, err := client.CoreV1().Pods("immediate-test").Create(ctx, pod, metav1.CreateOptions{})
+	createPod(setup.ctx, t, setup.client, "immediate-test", "test-pod", nodeName, v1.PodRunning)
+	enqueueHealthEvent(setup.ctx, t, setup.queueMgr, setup.mockCollection, nodeName)
+
+	assertPodsEvicted(t, setup.client, setup.ctx, "immediate-test")
+	assertNodeLabel(t, setup.client, setup.ctx, nodeName, statemanager.DrainSucceededLabelValue)
+}
+
+// TestReconciler_AllowCompletionRequeue validates allow-completion mode with queue-based requeuing.
+// Node enters draining state, waits for pods to complete, then transitions to drain-succeeded after pod completion.
+func TestReconciler_AllowCompletionRequeue(t *testing.T) {
+	setup := setupRequeueTest(t, []config.UserNamespace{
+		{Name: "completion-*", Mode: config.ModeAllowCompletion},
+	})
+
+	nodeName := "completion-requeue-node"
+	createNode(setup.ctx, t, setup.client, nodeName)
+
+	ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "completion-test"}}
+	_, err := setup.client.CoreV1().Namespaces().Create(setup.ctx, ns, metav1.CreateOptions{})
 	require.NoError(t, err)
-	po.Status = pod.Status
-	_, err = client.CoreV1().Pods("immediate-test").UpdateStatus(ctx, po, metav1.UpdateOptions{})
+
+	createPod(setup.ctx, t, setup.client, "completion-test", "running-pod", nodeName, v1.PodRunning)
+	enqueueHealthEvent(setup.ctx, t, setup.queueMgr, setup.mockCollection, nodeName)
+
+	assertNodeLabel(t, setup.client, setup.ctx, nodeName, statemanager.DrainingLabelValue)
+
+	time.Sleep(5 * time.Second)
+
+	updatedPod, err := setup.client.CoreV1().Pods("completion-test").Get(setup.ctx, "running-pod", metav1.GetOptions{})
+	require.NoError(t, err)
+	updatedPod.Status.Phase = v1.PodSucceeded
+	_, err = setup.client.CoreV1().Pods("completion-test").UpdateStatus(setup.ctx, updatedPod, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		pod, err := setup.client.CoreV1().Pods("completion-test").Get(setup.ctx, "running-pod", metav1.GetOptions{})
+		if err != nil {
+			return true
+		}
+		if pod.Status.Phase == v1.PodSucceeded {
+			pod.Finalizers = nil
+			_, _ = setup.client.CoreV1().Pods("completion-test").Update(setup.ctx, pod, metav1.UpdateOptions{})
+			_ = setup.client.CoreV1().Pods("completion-test").Delete(setup.ctx, "running-pod", metav1.DeleteOptions{
+				GracePeriodSeconds: ptr.To(int64(0)),
+			})
+		}
+		pods, _ := setup.client.CoreV1().Pods("completion-test").List(setup.ctx, metav1.ListOptions{})
+		return len(pods.Items) == 0
+	}, 10*time.Second, 500*time.Millisecond)
+
+	assertNodeLabel(t, setup.client, setup.ctx, nodeName, statemanager.DrainSucceededLabelValue)
+}
+
+// TestReconciler_MultipleNodesRequeue validates concurrent draining of multiple nodes through the queue.
+// Ensures the queue handles multiple nodes independently without interference.
+func TestReconciler_MultipleNodesRequeue(t *testing.T) {
+	setup := setupRequeueTest(t, []config.UserNamespace{
+		{Name: "immediate-*", Mode: config.ModeImmediateEvict},
+	})
+
+	nodeNames := []string{"node-1", "node-2", "node-3"}
+	for _, nodeName := range nodeNames {
+		createNode(setup.ctx, t, setup.client, nodeName)
+	}
+
+	ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "immediate-test"}}
+	_, err := setup.client.CoreV1().Namespaces().Create(setup.ctx, ns, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	for _, nodeName := range nodeNames {
+		createPod(setup.ctx, t, setup.client, "immediate-test", fmt.Sprintf("pod-%s", nodeName), nodeName, v1.PodRunning)
+		enqueueHealthEvent(setup.ctx, t, setup.queueMgr, setup.mockCollection, nodeName)
+	}
+
+	assertPodsEvicted(t, setup.client, setup.ctx, "immediate-test")
+
+	for _, nodeName := range nodeNames {
+		assertNodeLabel(t, setup.client, setup.ctx, nodeName, statemanager.DrainSucceededLabelValue)
+	}
+}
+
+type MockMongoCollection struct {
+	UpdateOneFunc func(ctx context.Context, filter any, update any, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
+	FindOneFunc   func(ctx context.Context, filter any, opts ...*options.FindOneOptions) *mongo.SingleResult
+	FindFunc      func(ctx context.Context, filter any, opts ...*options.FindOptions) (*mongo.Cursor, error)
+}
+
+func (m *MockMongoCollection) UpdateOne(ctx context.Context, filter any, update any, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+	if m.UpdateOneFunc != nil {
+		return m.UpdateOneFunc(ctx, filter, update, opts...)
+	}
+	return &mongo.UpdateResult{ModifiedCount: 1}, nil
+}
+
+func (m *MockMongoCollection) FindOne(ctx context.Context, filter any, opts ...*options.FindOneOptions) *mongo.SingleResult {
+	if m.FindOneFunc != nil {
+		return m.FindOneFunc(ctx, filter, opts...)
+	}
+	return &mongo.SingleResult{}
+}
+
+func (m *MockMongoCollection) Find(ctx context.Context, filter any, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+	if m.FindFunc != nil {
+		return m.FindFunc(ctx, filter, opts...)
+	}
+	return nil, nil
+}
+
+type requeueTestSetup struct {
+	*testSetup
+	queueMgr queue.EventQueueManager
+}
+
+type testSetup struct {
+	ctx               context.Context
+	client            kubernetes.Interface
+	reconciler        *reconciler.Reconciler
+	mockCollection    *MockMongoCollection
+	informersInstance *informers.Informers
+}
+
+func setupDirectTest(t *testing.T, userNamespaces []config.UserNamespace, dryRun bool) *testSetup {
+	t.Helper()
+	ctx := t.Context()
+
+	testEnv := envtest.Environment{}
+	cfg, err := testEnv.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() { testEnv.Stop() })
+
+	client, err := kubernetes.NewForConfig(cfg)
 	require.NoError(t, err)
 
 	tomlConfig := config.TomlConfig{
@@ -689,9 +536,7 @@ func TestReconciler_DryRunMode(t *testing.T) {
 		SystemNamespaces:          "kube-*",
 		DeleteAfterTimeoutMinutes: 5,
 		NotReadyTimeoutMinutes:    2,
-		UserNamespaces: []config.UserNamespace{
-			{Name: "immediate-*", Mode: config.ModeImmediateEvict},
-		},
+		UserNamespaces:            userNamespaces,
 	}
 
 	reconcilerConfig := config.ReconcilerConfig{
@@ -702,46 +547,156 @@ func TestReconciler_DryRunMode(t *testing.T) {
 		StateManager:  statemanager.NewStateManager(client),
 	}
 
-	informersInstance, err := informers.NewInformers(client, 1*time.Minute, ptr.To(2), true)
+	informersInstance, err := informers.NewInformers(client, 1*time.Minute, ptr.To(2), dryRun)
 	require.NoError(t, err)
 
-	go func() {
-		_ = informersInstance.Run(ctx)
-	}()
+	go informersInstance.Run(ctx)
+	require.Eventually(t, informersInstance.HasSynced, 30*time.Second, 1*time.Second)
 
-	require.Eventually(t, func() bool {
-		return informersInstance.HasSynced()
-	}, 30*time.Second, 1*time.Second, "informers should be synced")
+	r := reconciler.NewReconciler(reconcilerConfig, dryRun, client, informersInstance)
 
-	r := reconciler.NewReconciler(reconcilerConfig, true, client, informersInstance)
-	mockCollection := &MockMongoCollection{}
+	return &testSetup{
+		ctx:               ctx,
+		client:            client,
+		reconciler:        r,
+		mockCollection:    &MockMongoCollection{},
+		informersInstance: informersInstance,
+	}
+}
 
-	healthEvent := &storeconnector.HealthEventWithStatus{
-		HealthEvent: &platform_connectors.HealthEvent{NodeName: nodeName, CheckName: "test"},
-		HealthEventStatus: storeconnector.HealthEventStatus{
-			NodeQuarantined:        ptr.To(storeconnector.Quarantined),
-			UserPodsEvictionStatus: storeconnector.OperationStatus{Status: storeconnector.StatusInProgress},
-		},
-		CreatedAt: time.Now(),
+func setupRequeueTest(t *testing.T, userNamespaces []config.UserNamespace) *requeueTestSetup {
+	t.Helper()
+	setup := setupDirectTest(t, userNamespaces, false)
+
+	queueMgr := setup.reconciler.GetQueueManager()
+	queueMgr.Start(setup.ctx)
+	t.Cleanup(setup.reconciler.Shutdown)
+
+	return &requeueTestSetup{
+		testSetup: setup,
+		queueMgr:  queueMgr,
+	}
+}
+
+func createNode(ctx context.Context, t *testing.T, client kubernetes.Interface, nodeName string) {
+	t.Helper()
+	createNodeWithLabels(ctx, t, client, nodeName, map[string]string{"test": "true"})
+}
+
+func createNodeWithLabels(ctx context.Context, t *testing.T, client kubernetes.Interface, nodeName string, labels map[string]string) {
+	t.Helper()
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName, Labels: labels},
+		Status:     v1.NodeStatus{Conditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionTrue}}},
+	}
+	_, err := client.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
+	require.NoError(t, err)
+}
+
+func createNamespace(ctx context.Context, t *testing.T, client kubernetes.Interface, name string) {
+	t.Helper()
+	ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	_, err := client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	require.NoError(t, err)
+}
+
+func createPod(ctx context.Context, t *testing.T, client kubernetes.Interface, namespace, name, nodeName string, phase v1.PodPhase) {
+	t.Helper()
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Spec:       v1.PodSpec{NodeName: nodeName, Containers: []v1.Container{{Name: "c", Image: "nginx"}}},
+		Status:     v1.PodStatus{Phase: phase},
+	}
+	po, err := client.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+	require.NoError(t, err)
+	po.Status = pod.Status
+	_, err = client.CoreV1().Pods(namespace).UpdateStatus(ctx, po, metav1.UpdateOptions{})
+	require.NoError(t, err)
+}
+
+type healthEventOptions struct {
+	nodeName        string
+	nodeQuarantined storeconnector.Status
+	drainForce      bool
+}
+
+func createHealthEvent(opts healthEventOptions) bson.M {
+	healthEvent := &platform_connectors.HealthEvent{
+		NodeName:  opts.nodeName,
+		CheckName: "test-check",
 	}
 
-	event := bson.M{
+	if opts.drainForce {
+		healthEvent.DrainOverrides = &platform_connectors.BehaviourOverrides{Force: true}
+	}
+
+	return bson.M{
 		"fullDocument": bson.M{
-			"_id":               "test-id",
-			"healthevent":       healthEvent.HealthEvent,
-			"healtheventstatus": healthEvent.HealthEventStatus,
-			"createdAt":         healthEvent.CreatedAt,
+			"_id":         opts.nodeName + "-event",
+			"healthevent": healthEvent,
+			"healtheventstatus": storeconnector.HealthEventStatus{
+				NodeQuarantined:        &opts.nodeQuarantined,
+				UserPodsEvictionStatus: storeconnector.OperationStatus{Status: storeconnector.StatusInProgress},
+			},
+			"createdAt": time.Now(),
 		},
 	}
+}
 
-	err = r.ProcessEvent(ctx, event, mockCollection, nodeName)
-	assert.NoError(t, err)
+func enqueueHealthEvent(ctx context.Context, t *testing.T, queueMgr queue.EventQueueManager, collection *MockMongoCollection, nodeName string) {
+	t.Helper()
+	event := createHealthEvent(healthEventOptions{
+		nodeName:        nodeName,
+		nodeQuarantined: storeconnector.Quarantined,
+	})
+	require.NoError(t, queueMgr.EnqueueEvent(ctx, nodeName, event, collection))
+}
 
+func processHealthEvent(ctx context.Context, t *testing.T, r *reconciler.Reconciler, collection *MockMongoCollection, opts healthEventOptions) error {
+	t.Helper()
+	event := createHealthEvent(opts)
+	return r.ProcessEvent(ctx, event, collection, opts.nodeName)
+}
+
+func assertNodeLabel(t *testing.T, client kubernetes.Interface, ctx context.Context, nodeName string, expectedLabel statemanager.NVSentinelStateLabelValue) {
+	t.Helper()
 	require.Eventually(t, func() bool {
-		pods, err := client.CoreV1().Pods("immediate-test").List(ctx, metav1.ListOptions{})
+		node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}
-		return len(pods.Items) == 1
-	}, 30*time.Second, 1*time.Second, "pod should still exist in dry-run mode")
+		label, exists := node.Labels[statemanager.NVSentinelStateLabelKey]
+		return exists && label == string(expectedLabel)
+	}, 30*time.Second, 1*time.Second)
+}
+
+func assertPodsEvicted(t *testing.T, client kubernetes.Interface, ctx context.Context, namespace string) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		pods, _ := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+		allMarkedForDeletion := true
+		for _, p := range pods.Items {
+			if p.DeletionTimestamp == nil {
+				allMarkedForDeletion = false
+			} else {
+				pod := p
+				pod.Finalizers = nil
+				_, _ = client.CoreV1().Pods(namespace).Update(ctx, &pod, metav1.UpdateOptions{})
+			}
+		}
+		return allMarkedForDeletion
+	}, 30*time.Second, 1*time.Second)
+
+	require.Eventually(t, func() bool {
+		pods, _ := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+		for _, p := range pods.Items {
+			if p.DeletionTimestamp != nil {
+				_ = client.CoreV1().Pods(namespace).Delete(ctx, p.Name, metav1.DeleteOptions{
+					GracePeriodSeconds: ptr.To(int64(0)),
+				})
+			}
+		}
+		return len(pods.Items) == 0
+	}, 10*time.Second, 200*time.Millisecond)
 }

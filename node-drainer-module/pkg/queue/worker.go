@@ -50,15 +50,9 @@ func (m *eventQueueManager) processNextWorkItem(ctx context.Context) bool {
 
 	err := m.processEvent(ctx, *nodeEvent.Event, nodeEvent.Collection, nodeEvent.NodeName)
 	if err != nil {
-		if m.queue.NumRequeues(nodeEvent) < maxRetries {
-			klog.Warningf("Error processing event for node %s (attempt %d/%d): %v",
-				nodeEvent.NodeName, m.queue.NumRequeues(nodeEvent)+1, maxRetries, err)
-			m.queue.AddRateLimited(nodeEvent)
-		} else {
-			klog.Errorf("Failed to process event for node %s after %d retries: %v",
-				nodeEvent.NodeName, maxRetries, err)
-			m.queue.Forget(nodeEvent)
-		}
+		klog.Warningf("Error processing event for node %s (attempt %d): %v (will retry)",
+			nodeEvent.NodeName, m.queue.NumRequeues(nodeEvent)+1, err)
+		m.queue.AddRateLimited(nodeEvent)
 	} else {
 		m.queue.Forget(nodeEvent)
 	}

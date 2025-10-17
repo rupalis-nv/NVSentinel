@@ -36,10 +36,6 @@ type MongoCollectionAPI interface {
 	Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error)
 }
 
-const (
-	maxRetries = 5
-)
-
 type EventQueueManager interface {
 	EnqueueEvent(ctx context.Context, nodeName string, event bson.M, collection MongoCollectionAPI) error
 	Start(ctx context.Context)

@@ -46,6 +46,7 @@ const (
 type Informers struct {
 	podInformer            cache.SharedIndexInformer
 	eventInformer          cache.SharedIndexInformer
+	nodeInformer           cache.SharedIndexInformer
 	clientset              kubernetes.Interface
 	notReadyTimeoutMinutes *int
 	dryRunMode             []string
@@ -86,6 +87,8 @@ func NewInformers(clientset kubernetes.Interface, resyncPeriod time.Duration,
 		return nil, fmt.Errorf("failed to add event indexer: %w", err)
 	}
 
+	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
+
 	dryRunMode := []string{}
 	if dryRun {
 		dryRunMode = []string{metav1.DryRunAll}
@@ -95,6 +98,7 @@ func NewInformers(clientset kubernetes.Interface, resyncPeriod time.Duration,
 		clientset:              clientset,
 		podInformer:            podInformer,
 		eventInformer:          eventInformer,
+		nodeInformer:           nodeInformer,
 		notReadyTimeoutMinutes: notReadyTimeoutMinutes,
 		dryRunMode:             dryRunMode,
 		namespace:              metav1.NamespaceDefault,
@@ -102,7 +106,7 @@ func NewInformers(clientset kubernetes.Interface, resyncPeriod time.Duration,
 }
 
 func (i *Informers) HasSynced() bool {
-	return i.podInformer.HasSynced() && i.eventInformer.HasSynced()
+	return i.podInformer.HasSynced() && i.eventInformer.HasSynced() && i.nodeInformer.HasSynced()
 }
 
 func NodeIndexFunc(obj any) ([]string, error) {
@@ -151,6 +155,7 @@ func NodeEventReasonIndexFunc(obj any) ([]string, error) {
 func (i *Informers) Run(ctx context.Context) error {
 	go i.podInformer.Run(ctx.Done())
 	go i.eventInformer.Run(ctx.Done())
+	go i.nodeInformer.Run(ctx.Done())
 
 	if ok := cache.WaitForCacheSync(ctx.Done(),
 		i.HasSynced); !ok {
@@ -382,6 +387,23 @@ func (i *Informers) UpdateNodeEvent(ctx context.Context, nodeName string, reason
 		}
 	}
 
+	// Get node from informer cache to retrieve its UID for proper event association
+	nodeObj, exists, err := i.nodeInformer.GetIndexer().GetByKey(nodeName)
+	if err != nil {
+		klog.Errorf("Failed to get node %s from cache: %v", nodeName, err)
+		return fmt.Errorf("error getting node %s from cache: %w", nodeName, err)
+	}
+
+	if !exists {
+		klog.Errorf("Node %s not found in cache", nodeName)
+		return fmt.Errorf("node %s not found in cache", nodeName)
+	}
+
+	node, ok := nodeObj.(*v1.Node)
+	if !ok {
+		return fmt.Errorf("failed to cast node object for %s", nodeName)
+	}
+
 	newEvent := &v1.Event{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: nodeName + "-",
@@ -390,6 +412,7 @@ func (i *Informers) UpdateNodeEvent(ctx context.Context, nodeName string, reason
 		InvolvedObject: v1.ObjectReference{
 			Kind:       "Node",
 			Name:       nodeName,
+			UID:        node.UID,
 			APIVersion: "v1",
 		},
 		Reason:         reason,

@@ -162,7 +162,7 @@ func (r *Reconciler) executeImmediateEviction(ctx context.Context,
 		}
 	}
 
-	return nil
+	return fmt.Errorf("immediate eviction completed, requeuing for status verification")
 }
 
 func (r *Reconciler) executeTimeoutEviction(ctx context.Context,
@@ -170,7 +170,12 @@ func (r *Reconciler) executeTimeoutEviction(ctx context.Context,
 	nodeName := healthEvent.HealthEvent.NodeName
 	timeoutMinutes := int(action.Timeout.Minutes())
 
-	return r.informers.DeletePodsAfterTimeout(ctx, nodeName, action.Namespaces, timeoutMinutes, &healthEvent)
+	if err := r.informers.DeletePodsAfterTimeout(ctx,
+		nodeName, action.Namespaces, timeoutMinutes, &healthEvent); err != nil {
+		return err
+	}
+
+	return fmt.Errorf("timeout eviction initiated, requeuing for status verification")
 }
 
 func (r *Reconciler) executeCheckCompletion(ctx context.Context,
@@ -211,7 +216,7 @@ func (r *Reconciler) executeCheckCompletion(ctx context.Context,
 
 	klog.Infof("All pods completed on node %s", nodeName)
 
-	return nil
+	return fmt.Errorf("pod completion verified, requeuing for status update")
 }
 
 func (r *Reconciler) executeMarkAlreadyDrained(ctx context.Context,
