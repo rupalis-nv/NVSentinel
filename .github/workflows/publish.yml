@@ -94,9 +94,11 @@ jobs:
           - component: gpu-health-monitor-dcgm3
             make_command: 'make -C health-monitors/gpu-health-monitor docker-publish-dcgm3'
             container_name: 'nvsentinel-gpu-health-monitor'
+            tag_suffix: '-dcgm-3.x'
           - component: gpu-health-monitor-dcgm4
             make_command: 'make -C health-monitors/gpu-health-monitor docker-publish-dcgm4'
             container_name: 'nvsentinel-gpu-health-monitor'
+            tag_suffix: '-dcgm-4.x'
           - component: syslog-health-monitor
             make_command: 'make -C health-monitors/syslog-health-monitor docker-publish'
             container_name: 'nvsentinel-syslog-health-monitor'

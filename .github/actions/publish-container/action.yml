@@ -42,6 +42,9 @@ inputs:
   container_name: 
     description: 'Container image being pushed'
     required: true
+  tag_suffix:
+    description: 'Optional tag that has to be appended to the image tag'
+    default: ''
 
 runs:
   using: 'composite'
@@ -79,7 +82,7 @@ runs:
       run: |
         ${{ inputs.make_command }}
 
-        DIGEST="$(crane digest ${{ inputs.nvcr_container_repo }}/${{ inputs.container_org }}/${{ inputs.container_name }}:${{ inputs.safe_ref_name }})"
+        DIGEST="$(crane digest ${{ inputs.nvcr_container_repo }}/${{ inputs.container_org }}/${{ inputs.container_name }}:${{ inputs.safe_ref_name }}${{ inputs.tag_suffix }})"
         echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
         echo "name=${{ inputs.nvcr_container_repo }}/${{ inputs.container_org }}/${{ inputs.container_name }}" >> "$GITHUB_OUTPUT"
 
