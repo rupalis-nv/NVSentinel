@@ -155,3 +155,4 @@ jobs:
           make_command: ${{ matrix.make_command }}
           registry_password: ${{ secrets.GITHUB_TOKEN }}
           container_name: ${{ matrix.container_name }}
+          tag_suffix: ${{ matrix.tag_suffix }}
