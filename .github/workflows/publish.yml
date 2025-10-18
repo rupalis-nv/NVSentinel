@@ -37,6 +37,7 @@ permissions:
   actions: read        # Required for artifact operations
   security-events: write
   id-token: write
+  attestations: write
 
 jobs:
   prepare-environment:
