@@ -15,5 +15,6 @@
 docker_build(
     "ghcr.io/nvidia/nvsentinel-syslog-health-monitor",
     context="../..",
-    dockerfile="./Dockerfile"
+    dockerfile="./Dockerfile",
+    build_args={"BUILD_TAGS": ""}
 )

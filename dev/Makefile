@@ -34,6 +34,22 @@ tilt-ci:
 		exit 1; \
 	fi
 	cd .. && tilt ci
+	@echo "Waiting for all deployments to be ready..."
+	@kubectl get deployments --all-namespaces --no-headers -o custom-columns=":metadata.namespace,:metadata.name" | while read ns name; do \
+		echo "Waiting for deployment $$name in namespace $$ns..."; \
+		kubectl rollout status deployment/$$name -n $$ns --timeout=300s || exit 1; \
+	done
+	@echo "Waiting for all daemonsets to be ready..."
+	@kubectl get daemonsets --all-namespaces --no-headers -o custom-columns=":metadata.namespace,:metadata.name" | while read ns name; do \
+		echo "Waiting for daemonset $$name in namespace $$ns..."; \
+		kubectl rollout status daemonset/$$name -n $$ns --timeout=300s || exit 1; \
+	done
+	@echo "Waiting for all statefulsets to be ready..."
+	@kubectl get statefulsets --all-namespaces --no-headers -o custom-columns=":metadata.namespace,:metadata.name" | while read ns name; do \
+		echo "Waiting for statefulset $$name in namespace $$ns..."; \
+		kubectl rollout status statefulset/$$name -n $$ns --timeout=300s || exit 1; \
+	done
+	@echo "All workloads are ready!"
 
 # ctlptl cluster configuration
 .PHONY: cluster-create
@@ -60,6 +76,8 @@ cluster-create:
 		exit 1; \
 	fi
 	ctlptl apply -f $(CTLPTL_CONFIG_FILE)
+	@echo "Waiting for all nodes to be ready..."
+	@kubectl wait --for=condition=ready nodes --all --timeout=300s
 	@echo "Cluster created successfully!"
 	@echo "Registry available at localhost:$(REGISTRY_PORT)"
 

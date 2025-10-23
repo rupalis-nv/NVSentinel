@@ -13,6 +13,8 @@
 # limitations under the License.
 
 ARG CUDA_VERSION="12.1.1-base-ubuntu22.04"
+ARG BUILD_TAGS="systemd"
+
 FROM public.ecr.aws/docker/library/golang:1.24-bullseye AS builder
 
 WORKDIR /go/src/nvsentinel
@@ -38,7 +40,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf /var/lib/apt/lists/*
 
 RUN cd health-monitors/syslog-health-monitor && \
-    CGO_ENABLED=1 go build -tags "systemd" -ldflags="-s -w" -o syslog-health-monitor main.go
+    CGO_ENABLED=1 go build -tags "${BUILD_TAGS}" -ldflags="-s -w" -o syslog-health-monitor main.go
 
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION} AS runtime
 
