@@ -78,15 +78,6 @@ jobs:
           ./build_image_list.sh
           cat versions.txt
 
-      # Temp dual image build for ko logging investigation
-      - name: Build image using ko
-        id: build-ko
-        env:
-          KO_DOCKER_REPO: ghcr.io/${{ github.repository }}  # Includes both owner and repo name
-          VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          GIT_COMMIT: ${{ github.sha }}
-        run: scripts/buildko
-
       - name: Upload versions.txt
         uses: actions/upload-artifact@v4
         with:
@@ -167,3 +158,74 @@ jobs:
           registry_password: ${{ secrets.GITHUB_TOKEN }}
           container_name: ${{ matrix.container_name }}
           tag_suffix: ${{ matrix.tag_suffix }}
+
+
+  # Build images using ko and attest provenance
+  # Once validated, this will replace the container-publish job above
+  build-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: prepare-environment
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      KO_DOCKER_REPO: ghcr.io/${{ github.repository }}
+      VERSION: ${{ github.ref_name }}
+      GIT_COMMIT: ${{ github.sha }}
+    outputs:
+      images: ${{ steps.ko-build.outputs.images }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+
+      - name: Setup build environment
+        uses: ./.github/actions/setup-build-env
+        with:
+          go-version: ${{ needs.prepare-environment.outputs.go_version }}
+          python-version: ${{ needs.prepare-environment.outputs.python_version }}
+          poetry-version: ${{ needs.prepare-environment.outputs.poetry_version }}
+          golangci-lint-version: ${{ needs.prepare-environment.outputs.golangci_lint_version }}
+          protobuf-version: ${{ needs.prepare-environment.outputs.protobuf_version }}
+          protoc-gen-go-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_version }}
+          protoc-gen-go-grpc-version: ${{ needs.prepare-environment.outputs.protoc_gen_go_grpc_version }}
+          shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
+
+      - name: Install Ko
+        uses: ko-build/setup-ko@d006021bd0c28d1ce33a07e7943d48b079944c8d  # v0.9
+
+      - name: Authenticate to GHCR
+        shell: bash
+        run: echo ${{ secrets.GITHUB_TOKEN }} | ko login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build Using Ko
+        id: ko-build
+        run: scripts/buildko
+
+  attest:
+    needs: build-images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        image: ${{ fromJson(needs.build-images.outputs.images) }}
+    steps:
+      - name: Authenticate to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a  # v3.0.0
+        with:
+          subject-name: ${{ matrix.image.name }}
+          subject-digest: ${{ matrix.image.digest }}
+          push-to-registry: true
