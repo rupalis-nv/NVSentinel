@@ -67,15 +67,25 @@ jobs:
           grpcio-tools-version: ${{ needs.prepare-environment.outputs.grpcio_tools_version }}
           shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
 
+      - name: Compute ref name with short SHA
+        id: ref-name
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "value=${{ github.ref_name }}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build image list
         id: build-list
         env:
-          SAFE_REF_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || needs.prepare-environment.outputs.safe_ref_name }}
-          NVCR_CONTAINER_REPO: ${{ needs.prepare-environment.outputs.nvcr_container_repo }}
-          NGC_ORG: ${{ needs.prepare-environment.outputs.container_org }}
+          CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
         run: |
-          chmod +x ./build_image_list.sh
-          ./build_image_list.sh
+          chmod +x ./scripts/build_image_list.sh
+          ./scripts/build_image_list.sh
           cat versions.txt
 
       - name: Upload versions.txt
@@ -148,12 +158,23 @@ jobs:
           grpcio-tools-version: ${{ needs.prepare-environment.outputs.grpcio_tools_version }}
           shellcheck-version: ${{ needs.prepare-environment.outputs.shellcheck_version }}
 
+      - name: Compute ref name with short SHA
+        id: ref-name
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "value=${{ github.ref_name }}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish container for ${{ matrix.component }}
         uses: ./.github/actions/publish-container
+        env:
+          CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
         with:
-          safe_ref_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || needs.prepare-environment.outputs.safe_ref_name }}
-          nvcr_container_repo: ${{ needs.prepare-environment.outputs.nvcr_container_repo }}
-          container_org: ${{ needs.prepare-environment.outputs.container_org }}
           make_command: ${{ matrix.make_command }}
           registry_password: ${{ secrets.GITHUB_TOKEN }}
           container_name: ${{ matrix.container_name }}
@@ -201,7 +222,7 @@ jobs:
 
       - name: Build Using Ko
         id: ko-build
-        run: scripts/buildko
+        run: scripts/buildko.sh
 
   attest:
     needs: build-images

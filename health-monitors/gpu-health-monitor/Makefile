@@ -19,27 +19,24 @@
 # MODULE-SPECIFIC CONFIGURATION
 # =============================================================================
 
+# Python module configuration
+IS_GO_MODULE := 0
+HAS_DOCKER := 1
+
+# Python package name (with underscores, not hyphens)
+PYTHON_PACKAGE_NAME := gpu_health_monitor
+
 # GPU-health-monitor specific settings (Python module)
 CLEAN_EXTRA_FILES := gpu_health_monitor.egg-info
-
-# Docker configuration - this module has dual DCGM support
-HAS_DOCKER := 1
 DOCKER_EXTRA_ARGS :=
 
-# Python-specific test setup
-TEST_SETUP_COMMANDS := poetry config virtualenvs.in-project true && poetry install &&
-
-# Python module - disable Go targets from common.mk
-IS_GO_MODULE := 0
-
-# Override lint-test for Python module (instead of Go)
-LINT_EXTRA_FLAGS :=
-
 # =============================================================================
-# INCLUDE COMMON DEFINITIONS
+# INCLUDE SHARED DEFINITIONS
 # =============================================================================
 
-include ../../common.mk
+include ../../make/common.mk
+include ../../make/python.mk
+include ../../make/docker.mk
 
 # Cache configuration for specialized builds (respect DISABLE_REGISTRY_CACHE)
 ifeq ($(DISABLE_REGISTRY_CACHE),true)
@@ -48,62 +45,66 @@ CACHE_TO_ARG_DCGM3 :=
 CACHE_FROM_ARG_DCGM4 :=
 CACHE_TO_ARG_DCGM4 :=
 else
-CACHE_FROM_ARG_DCGM3 := --cache-from=type=registry,ref=$(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-3
-CACHE_TO_ARG_DCGM3 := --cache-to=type=registry,ref=$(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-3,mode=max
-CACHE_FROM_ARG_DCGM4 := --cache-from=type=registry,ref=$(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-4
-CACHE_TO_ARG_DCGM4 := --cache-to=type=registry,ref=$(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-4,mode=max
+CACHE_FROM_ARG_DCGM3 := --cache-from=type=registry,ref=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-3
+CACHE_TO_ARG_DCGM3 := --cache-to=type=registry,ref=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-3,mode=max
+CACHE_FROM_ARG_DCGM4 := --cache-from=type=registry,ref=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-4
+CACHE_TO_ARG_DCGM4 := --cache-to=type=registry,ref=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-buildcache:$(MODULE_NAME)-4,mode=max
 endif
 
 # =============================================================================
 # DEFAULT TARGET
 # =============================================================================
 
-# Default target
-.PHONY: all clean help
+.PHONY: all
 all: lint-test
 
 # =============================================================================
 # PYTHON-SPECIFIC OVERRIDES
 # =============================================================================
 
-# Override Go-based targets with Python equivalents
-lint-test:
-	@echo "Linting and testing $(MODULE_NAME) (Python module)..."
-	$(TEST_SETUP_COMMANDS) \
-	poetry run black --check . && \
-	poetry run coverage run --source=gpu_health_monitor -m pytest -vv --junitxml=report.xml && \
-	(poetry run coverage xml || true) && \
-	(poetry run coverage report || true)
+# Detect OS for DCGM test compatibility
+UNAME_S := $(shell uname -s)
 
-vet:
-	@echo "Python modules don't use 'go vet' - skipping"
-
-lint:
-	@echo "Running Black formatter check on $(MODULE_NAME)..."
-	poetry run black --check .
-
-test:
+# Override test target to skip DCGM tests on non-Linux systems
+.PHONY: test
+test: ## Run tests with coverage (skips DCGM tests on non-Linux)
+ifneq ($(UNAME_S),Linux)
+	@echo "⚠️  WARNING: DCGM tests require Linux with NVIDIA GPUs"
+	@echo "⚠️  Skipping GPU health monitor tests on $(UNAME_S)"
+	@echo "⚠️  To run full test suite, use a Linux system with NVIDIA GPUs"
+	@mkdir -p $(CURDIR)
+	@touch report.xml
+	@echo '<?xml version="1.0" encoding="UTF-8"?><coverage version="0.0" timestamp="0"><packages/></coverage>' > coverage.xml
+	@echo '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" tests="0" skipped="0" failures="0" errors="0" time="0" /></testsuites>' > report.xml
+else
 	@echo "Running tests on $(MODULE_NAME)..."
-	$(TEST_SETUP_COMMANDS) \
-	poetry run coverage run --source=gpu_health_monitor -m pytest -vv --junitxml=report.xml
+	$(PYTHON_TEST_SETUP) \
+	poetry run coverage run --source=$(PYTHON_PACKAGE_NAME) -m pytest -vv --junitxml=report.xml
+endif
 
-coverage: test
+# Override coverage target to skip on non-Linux systems
+.PHONY: coverage
+coverage: test ## Generate coverage reports (skips on non-Linux)
+ifneq ($(UNAME_S),Linux)
+	@echo "⚠️  Skipping coverage report generation on $(UNAME_S)"
+	@echo "✓ Empty coverage files created for CI compatibility"
+else
 	@echo "Generating coverage reports for $(MODULE_NAME)..."
 	poetry run coverage report
 	poetry run coverage xml || true
+endif
 
-build:
-	@echo "Building $(MODULE_NAME) (Python module)..."
-	poetry build
+# Override lint-test to use the modified test and coverage targets
+.PHONY: lint-test
+lint-test: setup lint test coverage ## Run linting and tests (full pipeline)
+ifneq ($(UNAME_S),Linux)
+	@echo "✓ Linting passed (tests skipped on non-Linux system)"
+else
+	@echo "✓ All checks passed"
+endif
 
-binary:
-	@echo "Python modules don't build binaries directly - use 'build' target"
-
-clean:
-	@echo "Cleaning $(MODULE_NAME)..."
-	rm -f report.xml coverage.xml .coverage
-	rm -rf .pytest_cache
-	rm -rf $(CLEAN_EXTRA_FILES)
+# Python lint-test and other targets are provided by make/python.mk
+# but we can override them here if needed
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 
@@ -125,10 +126,10 @@ docker-build-dcgm3: setup-buildx
 		$(CACHE_TO_ARG_DCGM3) \
 		$(DOCKER_EXTRA_ARGS) \
 		$(DOCKER_LOAD_ARG) \
-		-t $(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-3.x \
+		-t $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-3.x \
 		--build-arg DCGM_VERSION=3.3.7-1-ubuntu22.04 \
 		--build-arg PYTHONPATH=/usr/local/dcgm/bindings/python3 \
-		-f $(DOCKER_MODULE_PATH)/Dockerfile \
+		-f $(MODULE_PATH)/Dockerfile \
 		.
 
 docker-build-dcgm4: setup-buildx
@@ -141,8 +142,8 @@ docker-build-dcgm4: setup-buildx
 		$(CACHE_TO_ARG_DCGM4) \
 		$(DOCKER_EXTRA_ARGS) \
 		$(DOCKER_LOAD_ARG) \
-		-t $(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-4.x \
-		-f $(DOCKER_MODULE_PATH)/Dockerfile \
+		-t $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-4.x \
+		-f $(MODULE_PATH)/Dockerfile \
 		.
 
 docker-publish: setup-buildx docker-publish-dcgm3 docker-publish-dcgm4
@@ -158,10 +159,10 @@ docker-publish-dcgm3: setup-buildx
 		$(CACHE_TO_ARG_DCGM3) \
 		$(DOCKER_EXTRA_ARGS) \
 		--push \
-		-t $(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-3.x \
+		-t $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-3.x \
 		--build-arg DCGM_VERSION=3.3.7-1-ubuntu22.04 \
 		--build-arg PYTHONPATH=/usr/local/dcgm/bindings/python3 \
-		-f $(DOCKER_MODULE_PATH)/Dockerfile \
+		-f $(MODULE_PATH)/Dockerfile \
 		.
 
 docker-publish-dcgm4: setup-buildx
@@ -174,8 +175,8 @@ docker-publish-dcgm4: setup-buildx
 		$(CACHE_TO_ARG_DCGM4) \
 		$(DOCKER_EXTRA_ARGS) \
 		--push \
-		-t $(NVCR_CONTAINER_REPO)/$(NGC_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-4.x \
-		-f $(DOCKER_MODULE_PATH)/Dockerfile \
+		-t $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/nvsentinel-$(MODULE_NAME):$(SAFE_REF_NAME)-dcgm-4.x \
+		-f $(MODULE_PATH)/Dockerfile \
 		.
 
 # =============================================================================
@@ -239,8 +240,8 @@ help:
 	@echo "Configuration (environment variables):"
 	@echo "  MODULE_NAME=$(MODULE_NAME)"
 	@echo "  REPO_ROOT=$(REPO_ROOT)"
-	@echo "  NVCR_CONTAINER_REPO=$(NVCR_CONTAINER_REPO)"
-	@echo "  NGC_ORG=$(NGC_ORG)"
+	@echo "  CONTAINER_REGISTRY=$(CONTAINER_REGISTRY)"
+	@echo "  CONTAINER_ORG=$(CONTAINER_ORG)"
 	@echo "  SAFE_REF_NAME=$(SAFE_REF_NAME)"
 	@echo "  PLATFORMS=$(PLATFORMS)"
 	@echo "  HAS_DOCKER=$(HAS_DOCKER)"

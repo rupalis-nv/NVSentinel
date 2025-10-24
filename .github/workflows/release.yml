@@ -47,14 +47,24 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
+      - name: Compute ref name with short SHA
+        id: ref-name
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "value=${{ github.ref_name }}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build image list
         env:
-          SAFE_REF_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || needs.prepare-environment.outputs.safe_ref_name }}
-          NVCR_CONTAINER_REPO: ${{ needs.prepare-environment.outputs.nvcr_container_repo }}
-          NGC_ORG: ${{ needs.prepare-environment.outputs.container_org }}
+          CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
         run: |
-          chmod +x ./build_image_list.sh
-          ./build_image_list.sh
+          chmod +x ./scripts/build_image_list.sh
+          ./scripts/build_image_list.sh
           cat versions.txt
 
       - name: Upload versions.txt
@@ -84,15 +94,25 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: Compute ref name with short SHA
+        id: ref-name
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "value=${{ github.ref_name }}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Package and publish Helm chart
         env:
-          SAFE_REF_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || needs.prepare-environment.outputs.safe_ref_name }}
-          CI_COMMIT_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          NVCR_CONTAINER_REPO: ${{ needs.prepare-environment.outputs.nvcr_container_repo }}
-          NGC_ORG: ${{ needs.prepare-environment.outputs.container_org }}
+          CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
+          CI_COMMIT_TAG: ${{ steps.ref-name.outputs.value }}
           HELM_REGISTRY_TYPE: oci
           HELM_OCI_REGISTRY: ghcr.io
-          HELM_OCI_REPOSITORY: ${{ needs.prepare-environment.outputs.container_org }}
+          HELM_OCI_REPOSITORY: nvidia
         run: make -C distros/kubernetes helm-publish
 
   create-github-release:
@@ -131,7 +151,7 @@ jobs:
 
             Install with:
             ```
-            helm install nvsentinel oci://ghcr.io/${{ github.repository_owner }}/nvsentinel --version ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+            helm install nvsentinel oci://ghcr.io/nvidia/nvsentinel --version ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
             ```
           files: |
             versions.txt

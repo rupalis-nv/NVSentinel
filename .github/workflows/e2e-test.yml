@@ -203,11 +203,15 @@ jobs:
           chmod +x scripts/configure-ctlptl-registry.sh
           ./scripts/configure-ctlptl-registry.sh
 
+      - name: Compute ref name with short SHA
+        id: ref-name
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "value=${{ github.ref_name }}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
       - name: Create cluster for E2E tests
         env:
-          SAFE_REF_NAME: ${{ needs.prepare-environment.outputs.safe_ref_name }}
-          NVCR_CONTAINER_REPO: ${{ needs.prepare-environment.outputs.nvcr_container_repo }}
-          NGC_ORG: ${{ needs.prepare-environment.outputs.container_org }}
+          CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
           CTLPTL_YAML: ctlptl-config.yaml
           # Make cluster names unique per architecture to avoid conflicts in parallel runs
           CLUSTER_NAME_SUFFIX: "-${{ matrix.arch }}"
@@ -222,9 +226,7 @@ jobs:
 
       - name: Run E2E tests
         env:
-          SAFE_REF_NAME: ${{ needs.prepare-environment.outputs.safe_ref_name }}
-          NVCR_CONTAINER_REPO: ${{ needs.prepare-environment.outputs.nvcr_container_repo }}
-          NGC_ORG: ${{ needs.prepare-environment.outputs.container_org }}
+          CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
           CTLPTL_YAML: ctlptl-config.yaml
           # Use same cluster name suffix for consistency
           CLUSTER_NAME_SUFFIX: "-${{ matrix.arch }}"
