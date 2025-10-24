@@ -319,7 +319,7 @@ jobs:
 
           # Generate the report using fgrosse's CLI tool (same format!)
           echo "Generating coverage report..."
-          if ! go-coverage-report -root=github.com/NVIDIA/nvsentinel \
+          if ! go-coverage-report -root=github.com/nvidia/nvsentinel \
             .github/outputs/old-coverage.txt \
             .github/outputs/new-coverage.txt \
             .github/outputs/all_modified_files.json > coverage-report.md 2> coverage-report.err; then
@@ -342,6 +342,12 @@ jobs:
           fi
 
           echo "✅ Coverage report generated successfully"
+
+          # Check if coverage report indicates no change to avoid spam
+          if grep -q "will \*\*not change\*\* overall coverage" coverage-report.md; then
+            echo "ℹ️  Coverage report shows no change - skipping PR comment to reduce noise"
+            exit 0
+          fi
 
           # Post comment using our correct PR number
           if [[ -n "${{ steps.pr-number.outputs.pr_number }}" ]]; then
