@@ -62,6 +62,7 @@ GO_MODULES := \
 	labeler-module \
 	node-drainer-module \
 	fault-remediation-module \
+	janitor \
 	store-client-sdk \
 	statemanager
 
@@ -80,7 +81,8 @@ PRIVATE_MODULES := \
 	fault-quarantine-module \
 	labeler-module \
 	node-drainer-module \
-	fault-remediation-module
+	fault-remediation-module \
+	janitor
 
 # Modules requiring kubebuilder for tests
 KUBEBUILDER_MODULES := \
@@ -435,6 +437,11 @@ lint-test-fault-remediation-module:
 	@echo "Linting and testing fault-remediation-module (using standardized Makefile)..."
 	$(MAKE) -C fault-remediation-module lint-test
 
+.PHONY: lint-test-janitor
+lint-test-janitor:
+	@echo "Linting and testing janitor (using standardized Makefile)..."
+	$(MAKE) -C janitor lint-test
+
 .PHONY: lint-test-store-client-sdk
 lint-test-store-client-sdk:
 	@echo "Linting and testing store-client-sdk..."
@@ -610,6 +617,10 @@ docker-node-drainer-module:
 .PHONY: docker-fault-remediation-module
 docker-fault-remediation-module:
 	$(MAKE) -C docker build-fault-remediation-module
+
+.PHONY: docker-janitor
+docker-janitor:
+	$(MAKE) -C docker build-janitor
 
 .PHONY: docker-log-collector
 docker-log-collector:
