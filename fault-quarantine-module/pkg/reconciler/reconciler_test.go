@@ -25,13 +25,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/fault-quarantine-module/pkg/common"
 	"github.com/nvidia/nvsentinel/fault-quarantine-module/pkg/config"
 	"github.com/nvidia/nvsentinel/fault-quarantine-module/pkg/evaluator"
 	"github.com/nvidia/nvsentinel/fault-quarantine-module/pkg/healthEventsAnnotation"
 	"github.com/nvidia/nvsentinel/fault-quarantine-module/pkg/informer"
 	"github.com/nvidia/nvsentinel/platform-connectors/pkg/connectors/store"
-	"github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/statemanager"
 
 	corev1 "k8s.io/api/core/v1"
@@ -380,7 +380,7 @@ func TestHandleQuarantinedNodeUnquarantine(t *testing.T) {
 		CheckName:        "GpuNvLinkWatch", // Must match the annotation
 		ComponentClass:   "GPU",            // Must match the annotation
 		Version:          1,
-		IsHealthy:        true,                                                                     // triggers unquarantine comparison
+		IsHealthy:        true,                                                    // triggers unquarantine comparison
 		EntitiesImpacted: []*protos.Entity{{EntityType: "GPU", EntityValue: "0"}}, // Must match annotation
 	}
 
@@ -2409,8 +2409,22 @@ func TestManualUncordonEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to simulate manual uncordon: %v", err)
 	}
 
-	// Wait for the event to be processed
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the informer to process the update event
+	timeout := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	manualUncordonDetected := false
+	for !manualUncordonDetected {
+		select {
+		case <-timeout:
+			t.Fatal("Timeout waiting for manual uncordon to be detected")
+		case <-ticker.C:
+			mu.Lock()
+			manualUncordonDetected = manualUncordonCalled
+			mu.Unlock()
+		}
+	}
 
 	// Verify manual uncordon was detected and handled
 	mu.Lock()
@@ -2421,6 +2435,26 @@ func TestManualUncordonEndToEnd(t *testing.T) {
 		t.Errorf("Expected manual uncordon for test-node-1, got %s", manualUncordonNodeName)
 	}
 	mu.Unlock()
+
+	// Wait for the node to be updated by the reconciler
+	nodeUpdated := false
+	timeout = time.After(2 * time.Second)
+	ticker = time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for !nodeUpdated {
+		select {
+		case <-timeout:
+			t.Fatal("Timeout waiting for node to be updated with manual uncordon annotation")
+		case <-ticker.C:
+			node, err := fakeClient.CoreV1().Nodes().Get(ctx, "test-node-1", metav1.GetOptions{})
+			if err == nil {
+				if val := node.Annotations[common.QuarantinedNodeUncordonedManuallyAnnotationKey]; val == common.QuarantinedNodeUncordonedManuallyAnnotationValue {
+					nodeUpdated = true
+				}
+			}
+		}
+	}
 
 	// Verify the node was updated with manual uncordon annotation
 	updatedNode, err := fakeClient.CoreV1().Nodes().Get(ctx, "test-node-1", metav1.GetOptions{})

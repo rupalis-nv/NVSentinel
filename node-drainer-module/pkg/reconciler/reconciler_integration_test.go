@@ -17,6 +17,7 @@ package reconciler_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/statemanager"
 	"github.com/nvidia/nvsentinel/store-client-sdk/pkg/storewatcher"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
@@ -36,7 +38,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
@@ -155,7 +156,7 @@ func TestReconciler_ProcessEvent(t *testing.T) {
 				require.Eventually(t, func() bool {
 					node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 					require.NoError(t, err)
-					klog.Infof("Node %s labels: %v", nodeName, node.Labels)
+					slog.Info("Node %s labels: %v", nodeName, node.Labels)
 					_, exists := node.Labels[statemanager.NVSentinelStateLabelKey]
 					return !exists
 				}, 30*time.Second, 1*time.Second, "draining label should be removed")

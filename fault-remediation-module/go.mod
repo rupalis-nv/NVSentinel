@@ -64,11 +64,11 @@ require (
 )
 
 require (
+	github.com/nvidia/nvsentinel/commons v0.0.0
 	github.com/nvidia/nvsentinel/data-models v0.0.0
 	github.com/nvidia/nvsentinel/platform-connectors v0.0.0
 	github.com/nvidia/nvsentinel/statemanager v0.0.0
 	github.com/nvidia/nvsentinel/store-client-sdk v0.0.0
-	k8s.io/klog/v2 v2.130.1
 )
 
 require (
@@ -91,6 +91,7 @@ require (
 	golang.org/x/mod v0.29.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiextensions-apiserver v0.34.1 // indirect
+	k8s.io/klog/v2 v2.130.1 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
@@ -118,3 +119,5 @@ replace github.com/nvidia/nvsentinel/fault-quarantine-module => ../fault-quarant
 replace github.com/nvidia/nvsentinel/labeler-module => ../labeler-module
 
 replace github.com/nvidia/nvsentinel/node-drainer-module => ../node-drainer-module
+
+replace github.com/nvidia/nvsentinel/commons => ../commons
