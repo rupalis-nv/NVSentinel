@@ -439,10 +439,9 @@ export CI_COMMIT_REF_NAME="main"
 make docker-all
 
 # Images will be tagged like:
-# ghcr.io/your-github-username/nvsentinel-syslog-health-monitor:main
-```
-# ghcr.io/nvidia/nvsentinel-gpu-health-monitor:main-dcgm-3.x
-# ghcr.io/nvidia/nvsentinel-gpu-health-monitor:main-dcgm-4.x
+# ghcr.io/your-github-username/syslog-health-monitor:main
+# ghcr.io/nvidia/nvsentinel/gpu-health-monitor:main-dcgm-3.x
+# ghcr.io/nvidia/nvsentinel/gpu-health-monitor:main-dcgm-4.x
 ```
 
 **Testing Specific Module:**
@@ -453,7 +452,7 @@ docker run --rm platform-connectors:local --help
 
 # Alternative: Build with full CI features
 make docker-platform-connectors
-docker run --rm ghcr.io/nvidia/nvsentinel-platform-connectors:fix-make-file-targets --help
+docker run --rm ghcr.io/nvidia/nvsentinel/platform-connectors:fix-make-file-targets --help
 
 # Build private repo module (fast, local)
 make -C health-events-analyzer docker-build-local
@@ -842,7 +841,7 @@ The CI environment uses:
    docker system prune -f
 
    # Rebuild without cache
-   docker build --no-cache -t nvsentinel-platform-connectors platform-connectors/
+   docker build --no-cache -t platform-connectors platform-connectors/
    ```
 
 4. **Shellcheck Version Differences (Log Collector)**
