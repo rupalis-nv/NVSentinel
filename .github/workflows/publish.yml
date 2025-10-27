@@ -44,7 +44,7 @@ jobs:
     uses: ./.github/workflows/prepare-environment.yml
 
   build-image-list:
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu32
     timeout-minutes: 60
     needs: prepare-environment
     outputs:
@@ -167,7 +167,7 @@ jobs:
   # Build images using ko and attest provenance
   # Once validated, this will replace the container-publish job above
   build-images:
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu32
     timeout-minutes: 60
     needs: prepare-environment
     permissions:
@@ -226,7 +226,7 @@ jobs:
 
   attest:
     needs: build-images
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu32
     permissions:
       packages: write
       id-token: write
