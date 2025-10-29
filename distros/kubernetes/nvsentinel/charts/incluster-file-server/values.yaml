@@ -63,6 +63,5 @@ metrics:
 # Cleanup metrics container image
 cleanupMetrics:
   image:
-    repository: ghcr.io/nvidia/nvsentinel/file-server-cleanup
-    tag: ""  # Uses global.image.tag by default
+    repository: ghcr.io/nvidia/nvsentinel-file-server-cleanup
     pullPolicy: IfNotPresent

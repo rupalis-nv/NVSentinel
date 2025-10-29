@@ -32,7 +32,6 @@ spec:
         - name: nvidia-ngcuser-pull-secret
 
       restartPolicy: Never
-      # nodeName will be set programmatically by the controller before create
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
@@ -62,12 +61,14 @@ spec:
               value: {{ .Values.logCollector.uploadURL | quote }}
             - name: ENABLE_GCP_SOS_COLLECTION
               value: {{ .Values.logCollector.enableGcpSosCollection | quote }}
+            - name: ENABLE_AWS_SOS_COLLECTION
+              value: {{ .Values.logCollector.enableAwsSosCollection | quote }}
           volumeMounts:
             - name: artifacts
               mountPath: /artifacts
             - name: host-root
               mountPath: /host
-              readOnly: true
+              readOnly: false
       volumes:
         - name: artifacts
           emptyDir: {}
