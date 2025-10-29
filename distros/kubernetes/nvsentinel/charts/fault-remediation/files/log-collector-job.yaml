@@ -28,8 +28,6 @@ spec:
         app: nvsentinel-log-collector
     spec:
       serviceAccountName: log-collector-job
-      imagePullSecrets:
-        - name: nvidia-ngcuser-pull-secret
 
       restartPolicy: Never
       {{- with .Values.tolerations }}

@@ -23,10 +23,15 @@ import (
 	"strings"
 
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
+	"github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/patterns"
 	"github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/types"
 
 	"github.com/thedatashed/xlsxreader"
 )
+
+// XIDPattern is the canonical pattern for detecting XID errors.
+// Re-exported from the patterns package for convenience.
+var XIDPattern = patterns.XIDPattern
 
 // NVIDIA XID Error Catalog - Embedded Excel File
 //
@@ -59,22 +64,22 @@ import (
 //go:embed Xid-Catalog.xlsx
 var embeddedXidCatalog []byte
 
-// MapActionStringToProto maps action strings to protobuf RecommenedAction values using generated protobuf map
-func MapActionStringToProto(s string) pb.RecommenedAction {
+// MapActionStringToProto maps action strings to protobuf RecommendedAction values using generated protobuf map
+func MapActionStringToProto(s string) pb.RecommendedAction {
 	s = strings.TrimSpace(s)
 
-	if value, exists := pb.RecommenedAction_value[s]; exists {
-		return pb.RecommenedAction(value)
+	if value, exists := pb.RecommendedAction_value[s]; exists {
+		return pb.RecommendedAction(value)
 	}
 
 	switch s {
 	case "RESTART_APP", "IGNORE":
-		return pb.RecommenedAction_NONE
+		return pb.RecommendedAction_NONE
 	case "WORKFLOW_XID_48", "RESET_GPU", "RESET_FABRIC":
-		return pb.RecommenedAction_COMPONENT_RESET
+		return pb.RecommendedAction_COMPONENT_RESET
 	default:
 		slog.Warn("Unknown action string, defaulting to CONTACT_SUPPORT", "action", s)
-		return pb.RecommenedAction_CONTACT_SUPPORT
+		return pb.RecommendedAction_CONTACT_SUPPORT
 	}
 }
 

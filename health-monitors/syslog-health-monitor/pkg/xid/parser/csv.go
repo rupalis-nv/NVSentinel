@@ -23,15 +23,13 @@ import (
 
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/common"
+	"github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/patterns"
 	"github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/types"
 	"github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/xid/metrics"
 )
 
 var (
-	reXidPattern = regexp.MustCompile(
-		`NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)(?:, pid=(\d+))?(?:, name=([^,]+))?(?:, Ch ([0-9a-fA-F]+))?`,
-	)
-
+	// reXidNVL5Pattern matches NVIDIA NVL5 XID messages with subcode and intrinfo
 	reXidNVL5Pattern = regexp.MustCompile(
 		`NVRM: Xid \(PCI:([^)]+)\): (\d+)(?:, pid=[^,]*)?(?:, name=[^,]*)?, ` +
 			`(\w+)\s+(\w+)\s+(\w+)\s+(\w+)\s+Link\s+(-?\d+)\s+\((0x[0-9a-fA-F]+)\s+(0x[0-9a-fA-F]+)`,
@@ -101,7 +99,7 @@ func (p *CSVParser) parseNVL5XID(message string) (*Response, error) {
 
 	var ruleMnemonic string
 
-	var recommendedAction pb.RecommenedAction
+	var recommendedAction pb.RecommendedAction
 
 	for _, rule := range rules {
 		if p.matchesNVL5Rule(rule, intrInfo, errorStatusStr) {
@@ -135,7 +133,8 @@ func (p *CSVParser) parseNVL5XID(message string) (*Response, error) {
 
 // parseStandardXID parses standard XID messages
 func (p *CSVParser) parseStandardXID(message string) (*Response, error) {
-	m := reXidPattern.FindStringSubmatch(message)
+	// Use the canonical XID pattern from the patterns package directly
+	m := patterns.XIDPattern.FindStringSubmatch(message)
 	if len(m) < 3 {
 		return &Response{Success: false}, nil
 	}
@@ -148,7 +147,7 @@ func (p *CSVParser) parseStandardXID(message string) (*Response, error) {
 
 	pciAddr := m[1]
 
-	var recommendedAction pb.RecommenedAction = pb.RecommenedAction_CONTACT_SUPPORT
+	var recommendedAction pb.RecommendedAction = pb.RecommendedAction_CONTACT_SUPPORT
 	if errRes, found := p.errorResolutionMap[xidCode]; found {
 		recommendedAction = errRes.RecommendedAction
 		slog.Info("Found action for XID code",

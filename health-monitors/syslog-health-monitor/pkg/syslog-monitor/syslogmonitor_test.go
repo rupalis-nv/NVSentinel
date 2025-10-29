@@ -275,7 +275,7 @@ type mockPlatformConnectorClient struct {
 	RecordedHealthEvents []*pb.HealthEvents
 }
 
-func (m *mockPlatformConnectorClient) HealthEventOccuredV1(ctx context.Context, events *pb.HealthEvents, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (m *mockPlatformConnectorClient) HealthEventOccurredV1(ctx context.Context, events *pb.HealthEvents, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	m.RecordedHealthEvents = append(m.RecordedHealthEvents, events)
 	return &emptypb.Empty{}, nil
 }
@@ -344,7 +344,7 @@ func TestPrepareHealthEvent(t *testing.T) {
 
 	message := "test message"
 	errRes := types.ErrorResolution{
-		RecommendedAction: pb.RecommenedAction_RESTART_BM,
+		RecommendedAction: pb.RecommendedAction_RESTART_BM,
 	}
 	healthEvents := fd.prepareHealthEventWithAction(check, message, false, errRes)
 
@@ -454,7 +454,7 @@ func (mh *mockHandler) ProcessLine(message string) (*pb.HealthEvents, error) {
 		IsFatal:           true,
 		IsHealthy:         false,
 		NodeName:          mh.nodeName,
-		RecommendedAction: pb.RecommenedAction_RESTART_BM,
+		RecommendedAction: pb.RecommendedAction_RESTART_BM,
 		ErrorCode:         []string{"123"},
 	}
 
@@ -629,4 +629,38 @@ func TestRunMultipleChecks(t *testing.T) {
 
 	assert.NotNil(t, sm.checkToHandlerMap[XIDErrorCheck], "XID handler should be initialized")
 	assert.NotNil(t, sm.checkToHandlerMap[SXIDErrorCheck], "SXID handler should be initialized")
+}
+
+// TestGPUFallenOffHandlerInitialization tests that the GPU Fallen Off handler is properly initialized
+func TestGPUFallenOffHandlerInitialization(t *testing.T) {
+	check := CheckDefinition{
+		Name:        GPUFallenOffCheck,
+		JournalPath: "/path",
+	}
+
+	mockJournal := &MockJournal{
+		Entries:         []MockJournalEntry{{Message: "test msg", Cursor: "c1", BootID: "b1"}},
+		CurrentPosition: -1,
+		TestBootID:      "b1",
+	}
+
+	mockFactory := NewMockJournalFactory()
+	mockFactory.JournalsByPath["/path"] = mockJournal
+
+	testStateFile := "/tmp/test-syslog-monitor-gpufallen.json"
+	defer os.Remove(testStateFile)
+
+	sm, err := NewSyslogMonitorWithFactory(
+		TEST_NODE,
+		[]CheckDefinition{check},
+		&mockPlatformConnectorClient{},
+		TEST_AGENT,
+		TEST_COMPONENT,
+		"60s",
+		testStateFile,
+		mockFactory,
+		"http://localhost:8080",
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, sm.checkToHandlerMap[GPUFallenOffCheck], "GPU Fallen Off handler should be initialized")
 }
