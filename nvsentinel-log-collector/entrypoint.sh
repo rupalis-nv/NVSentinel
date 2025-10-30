@@ -28,6 +28,7 @@ GPU_OPERATOR_NAMESPACE="${GPU_OPERATOR_NAMESPACE:-gpu-operator}"
 DRIVER_CONTAINER_NAME="${DRIVER_CONTAINER_NAME:-nvidia-driver-ctr}"
 MUST_GATHER_SCRIPT_URL="${MUST_GATHER_SCRIPT_URL:-https://raw.githubusercontent.com/NVIDIA/gpu-operator/main/hack/must-gather.sh}"
 ENABLE_GCP_SOS_COLLECTION="${ENABLE_GCP_SOS_COLLECTION:-false}"
+ENABLE_AWS_SOS_COLLECTION="${ENABLE_AWS_SOS_COLLECTION:-false}"
 
 mkdir -p "${ARTIFACTS_DIR}"
 echo "[INFO] Target node: ${NODE_NAME} | GPU Operator namespace: ${GPU_OPERATOR_NAMESPACE} | Driver container: ${DRIVER_CONTAINER_NAME}"
@@ -43,8 +44,30 @@ is_running_on_gcp() {
   fi
 }
 
-# Auto-detect nvidia-bug-report approach and collect GCP SOS if needed
+# Function to detect if running on AWS using IMDSv2 only
+is_running_on_aws() {
+  local timeout=5
+  
+  # Get IMDSv2 session token
+  local token
+  token=$(curl -s -m "${timeout}" -X PUT \
+    "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+  
+  if [ -n "${token}" ]; then
+    # Use IMDSv2 with token to check metadata availability
+    if curl -s -m "${timeout}" -H "X-aws-ec2-metadata-token: ${token}" \
+      "http://169.254.169.254/latest/meta-data/" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  
+  return 1
+}
+
+# Auto-detect nvidia-bug-report approach and collect SOS reports if needed
 GCP_SOS_REPORT=""
+AWS_SOS_REPORT=""
 # Access host filesystem directly through privileged container
 GCP_NVIDIA_BUG_REPORT="/host/home/kubernetes/bin/nvidia/bin/nvidia-bug-report.sh"
 
@@ -130,7 +153,33 @@ else
   echo "[INFO] SOS collection is disabled or not applicable for this environment"
 fi
 
-# 2) GPU Operator must-gather (for all clusters)
+# 3) Collect AWS SOS report if on AWS and enabled
+if is_running_on_aws && [ "${ENABLE_AWS_SOS_COLLECTION}" = "true" ]; then
+  echo "[INFO] Collecting AWS SOS report..."
+  
+  # Generate a unique identifier for this SOS report 
+  SOS_UNIQUE_ID="nvsentinel-$(date +%s)-$$"
+  
+  if chroot /host bash -c "sos report --batch --tmp-dir=/var/tmp --name=${SOS_UNIQUE_ID}"; then
+    # Find the SOS report with our unique identifier (exclude .sha256 checksum files)
+    # Note: sos report prepends hostname, so pattern is: sosreport-<hostname>-<our-unique-id>-<date>-<random>.tar.*
+    AWS_SOS_REPORT_PATH=$(find /host/var/tmp -name "sosreport-*-${SOS_UNIQUE_ID}-*.tar.*" -not -name "*.sha256" 2>/dev/null | head -1)
+    
+    if [ -n "${AWS_SOS_REPORT_PATH}" ] && [ -f "${AWS_SOS_REPORT_PATH}" ]; then
+      AWS_SOS_REPORT="${ARTIFACTS_DIR}/$(basename "${AWS_SOS_REPORT_PATH}")"
+      cp "${AWS_SOS_REPORT_PATH}" "${AWS_SOS_REPORT}" && echo "[INFO] AWS SOS report saved to ${AWS_SOS_REPORT}"
+    else
+      echo "[WARN] SOS report generated but file with unique ID ${SOS_UNIQUE_ID} not found"
+    fi
+  else
+    echo "[WARN] SOS report collection failed - sos may not be installed on host"
+  fi
+  
+elif [ "${ENABLE_AWS_SOS_COLLECTION}" = "true" ]; then
+  echo "[INFO] AWS SOS collection enabled but not on AWS - skipping"
+fi
+
+# 4) GPU Operator must-gather (for all clusters)
 GPU_MG_DIR="${ARTIFACTS_DIR}/gpu-operator-must-gather"
 mkdir -p "${GPU_MG_DIR}"
 echo "[INFO] Running GPU Operator must-gather..."
@@ -163,6 +212,11 @@ if [ -n "${UPLOAD_URL_BASE:-}" ]; then
     curl -fsS -X PUT --upload-file "${GCP_SOS_REPORT}" \
       "${UPLOAD_URL_BASE}/${NODE_NAME}/${TIMESTAMP}/$(basename "${GCP_SOS_REPORT}")" || true
     echo "[UPLOAD_SUCCESS] GCP SOS report uploaded: $(basename "${GCP_SOS_REPORT}")"
+  fi
+  if [ -n "${AWS_SOS_REPORT}" ] && [ -f "${AWS_SOS_REPORT}" ]; then
+    curl -fsS -X PUT --upload-file "${AWS_SOS_REPORT}" \
+      "${UPLOAD_URL_BASE}/${NODE_NAME}/${TIMESTAMP}/$(basename "${AWS_SOS_REPORT}")" || true
+    echo "[UPLOAD_SUCCESS] AWS SOS report uploaded: $(basename "${AWS_SOS_REPORT}")"
   fi
 fi
 

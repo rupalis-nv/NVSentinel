@@ -71,6 +71,7 @@ logCollector:
   image:
     repository: ghcr.io/nvidia/nvsentinel/log-collector
     pullPolicy: IfNotPresent
-  uploadURL: "http://nvsentinel-file-server.nvsentinel.svc.cluster.local/upload"
+  uploadURL: "http://nvsentinel-incluster-file-server.nvsentinel.svc.cluster.local/upload"
   gpuOperatorNamespaces: "gpu-operator"
   enableGcpSosCollection: false
+  enableAwsSosCollection: false
