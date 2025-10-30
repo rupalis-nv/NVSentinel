@@ -64,4 +64,5 @@ metrics:
 cleanupMetrics:
   image:
     repository: ghcr.io/nvidia/nvsentinel-file-server-cleanup
+    tag: ""
     pullPolicy: IfNotPresent

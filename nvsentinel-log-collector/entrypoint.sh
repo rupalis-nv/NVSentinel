@@ -157,18 +157,19 @@ fi
 if is_running_on_aws && [ "${ENABLE_AWS_SOS_COLLECTION}" = "true" ]; then
   echo "[INFO] Collecting AWS SOS report..."
   
-  # Record current time to identify files created after this point
-  BEFORE_TIME=$(date +%s)
+  # Generate a unique identifier for this SOS report 
+  SOS_UNIQUE_ID="nvsentinel-$(date +%s)-$$"
   
-  if chroot /host bash -c "sos report --batch --tmp-dir=/var/tmp"; then
-    # Find the most recent SOS report created after our start time (exclude .sha256 checksum files)
-    AWS_SOS_REPORT_PATH=$(find /host/var/tmp -name "sosreport-*.tar.*" -not -name "*.sha256" -newermt "@${BEFORE_TIME}" 2>/dev/null | head -1)
+  if chroot /host bash -c "sos report --batch --tmp-dir=/var/tmp --name=${SOS_UNIQUE_ID}"; then
+    # Find the SOS report with our unique identifier (exclude .sha256 checksum files)
+    # Note: sos report prepends hostname, so pattern is: sosreport-<hostname>-<our-unique-id>-<date>-<random>.tar.*
+    AWS_SOS_REPORT_PATH=$(find /host/var/tmp -name "sosreport-*-${SOS_UNIQUE_ID}-*.tar.*" -not -name "*.sha256" 2>/dev/null | head -1)
     
     if [ -n "${AWS_SOS_REPORT_PATH}" ] && [ -f "${AWS_SOS_REPORT_PATH}" ]; then
       AWS_SOS_REPORT="${ARTIFACTS_DIR}/$(basename "${AWS_SOS_REPORT_PATH}")"
       cp "${AWS_SOS_REPORT_PATH}" "${AWS_SOS_REPORT}" && echo "[INFO] AWS SOS report saved to ${AWS_SOS_REPORT}"
     else
-      echo "[WARN] SOS report generated but file not found"
+      echo "[WARN] SOS report generated but file with unique ID ${SOS_UNIQUE_ID} not found"
     fi
   else
     echo "[WARN] SOS report collection failed - sos may not be installed on host"
