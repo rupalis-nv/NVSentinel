@@ -123,7 +123,7 @@ jobs:
       - name: Setup build environment
         uses: ./.github/actions/setup-ci-env
 
-      - name: Test ko build for ${{ matrix.module }}
+      - name: Use ko to build ${{ matrix.module }}
         run: |
           cd ${{ matrix.module }}
           ko build --bare --platform=linux/amd64,linux/arm64 ${{ matrix.path }}

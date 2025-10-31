@@ -23,6 +23,12 @@ export VERSION="${VERSION:-v0.1.0}"
 export GIT_COMMIT="${GIT_COMMIT:-dev}"
 export BUILD_DATE=$(date -u +%FT%TZ)
 
+# Display build variables for debugging
+echo "Build variables:"
+echo "  VERSION=${VERSION}"
+echo "  GIT_COMMIT=${GIT_COMMIT}"
+echo "  BUILD_DATE=${BUILD_DATE}"
+
 # Build flags - use PLATFORMS env var if set, otherwise use .ko.yaml defaults
 KO_FLAGS=(-B --image-refs=digests.txt --sbom=cyclonedx --tags="${VERSION}")
 if [ -n "${PLATFORMS:-}" ]; then

@@ -75,9 +75,13 @@ kubectl create configmap config-policy-controller \
 
 This allows images that don't match any `ClusterImagePolicy` pattern to run without verification.
 
-## Policy
+## Policies
 
-The provided [image-admission-policy.yaml](image-admission-policy.yaml) file contains a `ClusterImagePolicy` that enforces image verification for all NVSentinel images. It verifies that NVSentinel container images have valid SLSA Build Provenance attestations:
+Two `ClusterImagePolicy` policies are provided to enforce different levels of image verification:
+
+### 1. SLSA Build Provenance Policy
+
+The [must-have-slsa.yaml](must-have-slsa.yaml) file verifies that NVSentinel container images have valid SLSA Build Provenance attestations:
 
 - **Scope**: All pods using `ghcr.io/nvidia/nvsentinel/**` images
 - **Verification**: 
@@ -96,12 +100,29 @@ The provided [image-admission-policy.yaml](image-admission-policy.yaml) file con
 - **Bundle Format**: Attestations stored in Sigstore bundle format v0.3 with push-to-registry
 - **Regex Matching**: Supports both branch refs (`refs/heads/*`) and tag refs (`refs/tags/*`)
 
+### 2. SBOM Attestation Policy
+
+The [must-have-sbom.yaml](must-have-sbom.yaml) file verifies that NVSentinel container images have both:
+- **SLSA Build Provenance attestations** (as above)
+- **SBOM (Software Bill of Materials) attestations** in CycloneDX format
+
+This policy provides additional supply chain security by ensuring all image components are documented.
+
+**Multi-platform Support:**
+- Both policies support multi-platform images (linux/amd64, linux/arm64)
+- Each platform has its own attestations
+- Policy Controller automatically verifies the platform-specific digest matching the node architecture
+
 ## Installation
 
-Apply the policies to your cluster:
+Apply one of the policies to your cluster:
 
 ```bash
-kubectl apply -f image-admission-policy.yaml
+# Apply SLSA-only policy
+kubectl apply -f must-have-slsa.yaml
+
+# OR apply SLSA + SBOM policy (more restrictive)
+kubectl apply -f must-have-sbom.yaml
 ```
 
 Verify the policy is active:

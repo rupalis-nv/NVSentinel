@@ -89,9 +89,14 @@ jobs:
           path: versions.txt
           retention-days: 90
 
-  container-publish:
+  build-images-docker:
     runs-on: linux-amd64-cpu32
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     strategy:
       matrix:
         include:
@@ -143,7 +148,7 @@ jobs:
           tag_suffix: ${{ matrix.tag_suffix }}
 
   # Build images using ko and attest provenance
-  build-images:
+  build-images-ko:
     runs-on: linux-amd64-cpu32
     timeout-minutes: 60
     permissions:
@@ -154,6 +159,7 @@ jobs:
     env:
       KO_DOCKER_REPO: ghcr.io/${{ github.repository }}
       GIT_COMMIT: ${{ github.sha }}
+      PLATFORMS: linux/amd64,linux/arm64
     outputs:
       images: ${{ steps.ko-build.outputs.images }}
     steps:
@@ -188,40 +194,38 @@ jobs:
           VERSION: ${{ steps.ref-name.outputs.value }}
         run: scripts/buildko.sh
 
-  attest:
-    needs: build-images
+  attest-and-sbom-ko:
+    needs: build-images-ko
     runs-on: linux-amd64-cpu32
     permissions:
+      contents: read
       packages: write
       id-token: write
       attestations: write
     strategy:
       matrix:
-        image: ${{ fromJson(needs.build-images.outputs.images) }}
+        image: ${{ fromJson(needs.build-images-ko.outputs.images) }}
     steps:
-      - name: Authenticate to GHCR
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
+      - name: Checkout Code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
-      - name: Attest build provenance
-        id: attest
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a  # v3.0.0
+      - name: Generate SBOM and Attest
+        uses: ./.github/actions/sbom-and-attest
         with:
-          subject-name: ${{ matrix.image.name }}
-          subject-digest: ${{ matrix.image.digest }}
-          push-to-registry: true
+          image_name: ${{ matrix.image.name }}
+          image_digest: ${{ matrix.image.digest }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
 
   e2e-test:
     name: "E2E Test Published Images"
     runs-on: linux-amd64-cpu32
     timeout-minutes: 60
     needs:
-      - container-publish
-      - build-images
-      - attest
+      - build-images-docker
+      - build-images-ko
+      - attest-and-sbom-ko
     env:
       CLUSTER_NAME: 'nvsentinel-uat'
       FAKE_GPU_NODE_COUNT: '10'

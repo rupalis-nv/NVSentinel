@@ -14,24 +14,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# SLSA Provenance Verification Script
+# Image Provenance Verification Script
 # 
 # This script sets up and configures Sigstore Policy Controller in a Kubernetes
-# cluster to verify SLSA Build Provenance attestations for NVSentinel container
-# images.
+# cluster to verify image attestations for NVSentinel container images.
 #
-# CURRENT STATUS: Policy runs in WARN mode due to bundle format v0.3 incompatibility
+# Two policy options available:
+# - must-have-slsa.yaml: Verifies SLSA Build Provenance attestations only
+# - must-have-sbom.yaml: Verifies both SLSA provenance AND SBOM attestations
+#
+# CURRENT STATUS: Policies run in WARN mode due to bundle format v0.3 incompatibility
 # - Attestations are created by GitHub Actions in Sigstore bundle format v0.3
 # - Policy Controller 0.10.5 cannot read bundle format v0.3 yet (only v0.1/v0.2)
 #   Issue: https://github.com/sigstore/policy-controller/issues/1895
 # - All images are allowed to deploy, but validation warnings are logged
-# - Policy will be switched to enforce mode when v0.3 support is added
+# - Policies will be switched to enforce mode when v0.3 support is added
 #
 # The script:
 # - Installs Sigstore Policy Controller via Helm
-# - Applies ClusterImagePolicy for NVSentinel images (in warn mode)
+# - Applies selected ClusterImagePolicy for NVSentinel images (in warn mode)
 # - Configures namespace for policy enforcement
 # - Tests policy configuration with actual deployments
+#
+# Usage:
+#   ./scripts/verify-image-provenance.sh [slsa|sbom]
+#   
+#   slsa - Apply SLSA-only policy (default)
+#   sbom - Apply SLSA + SBOM policy (more restrictive)
 #
 # For manual verification of images outside the cluster, see:
 # distros/kubernetes/nvsentinel/policies/README.md
@@ -64,6 +73,9 @@ fi
 readonly POLICY_CONTROLLER_NS="cosign-system"
 readonly NVSENTINEL_NS="${NVSENTINEL_NS:-nvsentinel}"
 readonly POLICY_DIR="${POLICY_DIR:-$(cd "$REPO_ROOT/distros/kubernetes/nvsentinel/policies" && pwd)}"
+
+# Policy selection (default to SLSA-only)
+readonly POLICY_TYPE="${1:-slsa}"
 
 # Helper functions
 log_info() {
@@ -251,10 +263,25 @@ get_nvsentinel_images() {
 }
 
 apply_cluster_image_policy() {
-    log_info "Applying ClusterImagePolicy..."
+    # Determine which policy file to use
+    local policy_file
+    case "$POLICY_TYPE" in
+        slsa)
+            policy_file="${POLICY_DIR}/must-have-slsa.yaml"
+            log_info "Applying SLSA Build Provenance policy..."
+            ;;
+        sbom)
+            policy_file="${POLICY_DIR}/must-have-sbom.yaml"
+            log_info "Applying SLSA + SBOM attestation policy..."
+            ;;
+        *)
+            log_error "Invalid policy type: $POLICY_TYPE. Use 'slsa' or 'sbom'."
+            exit 1
+            ;;
+    esac
     
-    if [ ! -f "${POLICY_DIR}/image-admission-policy.yaml" ]; then
-        log_error "Policy file not found: ${POLICY_DIR}/image-admission-policy.yaml"
+    if [ ! -f "$policy_file" ]; then
+        log_error "Policy file not found: $policy_file"
         exit 1
     fi
     
@@ -263,7 +290,7 @@ apply_cluster_image_policy() {
         log_info "ClusterImagePolicy already exists, updating..."
     fi
     
-    kubectl apply -f "${POLICY_DIR}/image-admission-policy.yaml"
+    kubectl apply -f "$policy_file"
     
     # Wait a moment for the policy to be processed
     sleep 2
@@ -467,7 +494,8 @@ show_summary() {
 main() {
     echo ""
     log_info "═══════════════════════════════════════════════════════════"
-    log_info "  NVSentinel SLSA Provenance Verification"
+    log_info "  NVSentinel Image Provenance Verification"
+    log_info "  Policy Type: $(echo $POLICY_TYPE | tr '[:lower:]' '[:upper:]')"
     log_info "═══════════════════════════════════════════════════════════"
     echo ""
     

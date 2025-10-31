@@ -30,6 +30,11 @@ CI_COMMIT_REF_NAME ?= $(shell git rev-parse --abbrev-ref HEAD)
 SAFE_REF_NAME ?= $(shell echo $(CI_COMMIT_REF_NAME) | sed 's/\//-/g')
 SAFE_REF_NAME := $(if $(SAFE_REF_NAME),$(SAFE_REF_NAME),local)
 
+# Version and build metadata for OCI annotations
+VERSION ?= $(SAFE_REF_NAME)
+GIT_COMMIT ?= $(shell git rev-parse HEAD)
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 # Docker buildx configuration
 BUILDX_BUILDER ?= nvsentinel-builder
 PLATFORMS ?= linux/arm64,linux/amd64

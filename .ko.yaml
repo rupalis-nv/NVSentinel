@@ -15,11 +15,6 @@
 # .ko.yaml in the root of the repository
 defaultBaseImage: cgr.dev/chainguard/static:latest
 platforms: [linux/amd64, linux/arm64]
-
-ldflags:
-  - "-s -w"
-  - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
-
 env: [CGO_ENABLED=0]
 
 builds:
@@ -27,44 +22,134 @@ builds:
   - id: fault-quarantine-module
     dir: fault-quarantine-module
     main: .
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Fault Quarantine Module"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: fault-remediation-module
     dir: fault-remediation-module
     main: .
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Fault Remediation Module"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: health-events-analyzer
     dir: health-events-analyzer
     main: .
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Health Events Analyzer"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
     
   - id: csp-health-monitor
     dir: health-monitors/csp-health-monitor
     main: ./cmd/csp-health-monitor
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel CSP Health Monitor"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: maintenance-notifier
     dir: health-monitors/csp-health-monitor
     main: ./cmd/maintenance-notifier
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Maintenance Notifier"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: labeler-module
     dir: labeler-module
     main: .
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Labeler Module"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: node-drainer-module
     dir: node-drainer-module
     main: .
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Node Drainer Module"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: janitor
     dir: janitor
     main: .
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Janitor"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
   - id: platform-connectors
     dir: platform-connectors
     main: .
-
-labels:
-  org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
-  org.opencontainers.image.licenses: "Apache-2.0"
-  org.opencontainers.image.title: "NVSentinel"
-  org.opencontainers.image.description: "Fault remediation service to help with rapidly node-level issues resolution in GPU-accelerated computing environments"
-  org.opencontainers.image.version: "{{.Env.VERSION}}"
-  org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
-  org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
+    ldflags:
+      - "-s -w"
+      - "-X main.version={{.Env.VERSION}} -X main.commit={{.Env.GIT_COMMIT}} -X main.date={{.Env.BUILD_DATE}}"
+    labels:
+      org.opencontainers.image.source: "https://github.com/nvidia/nvsentinel"
+      org.opencontainers.image.licenses: "Apache-2.0"
+      org.opencontainers.image.title: "NVSentinel Platform Connectors"
+      org.opencontainers.image.description: "Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments"
+      org.opencontainers.image.version: "{{.Env.VERSION}}"
+      org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
+      org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
