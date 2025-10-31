@@ -56,6 +56,10 @@ circuitBreaker:
 config: |
   label-prefix = "k8saas.nvidia.com/"
   
+  [circuitBreaker]
+  percentage = 50
+  duration = "5m"
+  
   [[rule-sets]]
     version = "1"
     name = "GPU fatal error ruleset"              

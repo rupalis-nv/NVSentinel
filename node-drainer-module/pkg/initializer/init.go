@@ -34,11 +34,10 @@ import (
 )
 
 type InitializationParams struct {
-	MongoClientCertMountPath string
-	KubeconfigPath           string
-	TomlConfigPath           string
-	MetricsPort              string
-	DryRun                   bool
+	KubeconfigPath string
+	TomlConfigPath string
+	MetricsPort    string
+	DryRun         bool
 }
 
 type Components struct {
@@ -50,13 +49,11 @@ type Components struct {
 func InitializeAll(ctx context.Context, params InitializationParams) (*Components, error) {
 	slog.Info("Starting node drainer initialization")
 
-	envConfig, err := config.LoadEnvConfig()
+	mongoConfig, tokenConfig, err := storewatcher.LoadConfigFromEnv("node-drainer-module")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load environment configuration: %w", err)
+		return nil, fmt.Errorf("failed to load MongoDB configuration: %w", err)
 	}
 
-	mongoConfig := config.NewMongoConfig(envConfig, params.MongoClientCertMountPath)
-	tokenConfig := config.NewTokenConfig(envConfig)
 	pipeline := config.NewMongoPipeline()
 
 	tomlCfg, err := config.LoadTomlConfig(params.TomlConfigPath)

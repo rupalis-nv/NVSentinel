@@ -35,33 +35,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
-type MongoDBClientTLSCertConfig struct {
-	TlsCertPath string
-	TlsKeyPath  string
-	CaCertPath  string
-}
-
-// MongoDBConfig holds the MongoDB connection configuration.
-type MongoDBConfig struct {
-	URI                              string
-	Database                         string
-	Collection                       string
-	ClientTLSCertConfig              MongoDBClientTLSCertConfig
-	TotalPingTimeoutSeconds          int
-	TotalPingIntervalSeconds         int
-	TotalCACertTimeoutSeconds        int
-	TotalCACertIntervalSeconds       int
-	ChangeStreamRetryDeadlineSeconds int
-	ChangeStreamRetryIntervalSeconds int
-}
-
-// TokenConfig holds the token-specific configuration.
-type TokenConfig struct {
-	ClientName      string
-	TokenDatabase   string
-	TokenCollection string
-}
-
 // Struct for ResumeToken retrieval
 type TokenDoc struct {
 	ResumeToken bson.Raw `bson:"resumeToken"`

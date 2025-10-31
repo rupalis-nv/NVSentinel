@@ -55,11 +55,25 @@ tolerations:
 
 clientCertMountPath: "/etc/ssl/mongo-client"
 
+config: |
+  [maintenanceResource]
+  namespace = "nvsentinel"
+  version = "v1alpha1"
+  apiGroup = "janitor.dgxc.nvidia.com"
+  
+  [template]
+  mountPath = "/etc/fault-remediation/templates"
+  fileName = "maintenance-template.yaml"
+  
+  [updateRetry]
+  maxRetries = 5
+  retryDelaySeconds = 10
+
 maintenanceResource:
   rebootResource:
     name: rebootnodes
   apiGroup: janitor.dgxc.nvidia.com
-  namespace: dgxc-janitor
+  namespace: nvsentinel
   version: v1alpha1
   template:
     mountPath: /etc/fault-remediation/templates

@@ -29,6 +29,11 @@ type Cordon struct {
 	ShouldCordon bool `toml:"shouldCordon"`
 }
 
+type CircuitBreaker struct {
+	Percentage int    `toml:"percentage"`
+	Duration   string `toml:"duration"`
+}
+
 type Match struct {
 	Any []Rule `toml:"any"`
 	All []Rule `toml:"all"`
@@ -44,6 +49,7 @@ type RuleSet struct {
 }
 
 type TomlConfig struct {
-	LabelPrefix string    `toml:"label-prefix"`
-	RuleSets    []RuleSet `toml:"rule-sets"`
+	LabelPrefix    string         `toml:"label-prefix"`
+	CircuitBreaker CircuitBreaker `toml:"circuitBreaker"`
+	RuleSets       []RuleSet      `toml:"rule-sets"`
 }

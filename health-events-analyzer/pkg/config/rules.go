@@ -17,7 +17,7 @@ package reconciler
 import (
 	"fmt"
 
-	"github.com/BurntSushi/toml"
+	"github.com/nvidia/nvsentinel/commons/pkg/configmanager"
 )
 
 type SequenceStep struct {
@@ -39,7 +39,7 @@ type TomlConfig struct {
 
 func LoadTomlConfig(path string) (*TomlConfig, error) {
 	var config TomlConfig
-	if _, err := toml.DecodeFile(path, &config); err != nil {
+	if err := configmanager.LoadTOMLConfig(path, &config); err != nil {
 		return nil, fmt.Errorf("failed to decode TOML config from %s: %w", path, err)
 	}
 

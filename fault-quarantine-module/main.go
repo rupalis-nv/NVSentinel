@@ -23,7 +23,6 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/nvidia/nvsentinel/commons/pkg/logger"
 	"github.com/nvidia/nvsentinel/commons/pkg/server"
@@ -49,8 +48,7 @@ func main() {
 }
 
 func run() error {
-	metricsPort, mongoClientCertMountPath, kubeconfigPath, dryRun, circuitBreakerEnabled,
-		circuitBreakerPercentage, circuitBreakerDuration, tomlConfigPath := parseFlags()
+	metricsPort, kubeconfigPath, dryRun, circuitBreakerEnabled, tomlConfigPath := parseFlags()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -67,13 +65,10 @@ func run() error {
 	)
 
 	params := initializer.InitializationParams{
-		MongoClientCertMountPath: *mongoClientCertMountPath,
-		KubeconfigPath:           *kubeconfigPath,
-		TomlConfigPath:           *tomlConfigPath,
-		DryRun:                   *dryRun,
-		CircuitBreakerPercentage: *circuitBreakerPercentage,
-		CircuitBreakerDuration:   *circuitBreakerDuration,
-		CircuitBreakerEnabled:    *circuitBreakerEnabled,
+		KubeconfigPath:        *kubeconfigPath,
+		TomlConfigPath:        *tomlConfigPath,
+		DryRun:                *dryRun,
+		CircuitBreakerEnabled: *circuitBreakerEnabled,
 	}
 
 	components, err := initializer.InitializeAll(ctx, params)
@@ -108,12 +103,8 @@ func run() error {
 	return g.Wait()
 }
 
-func parseFlags() (metricsPort, mongoClientCertMountPath, kubeconfigPath *string, dryRun, circuitBreakerEnabled *bool,
-	circuitBreakerPercentage *int, circuitBreakerDuration *time.Duration, tomlConfigPath *string) {
+func parseFlags() (metricsPort, kubeconfigPath *string, dryRun, circuitBreakerEnabled *bool, tomlConfigPath *string) {
 	metricsPort = flag.String("metrics-port", "2112", "port to expose Prometheus metrics on")
-
-	mongoClientCertMountPath = flag.String("mongo-client-cert-mount-path", "/etc/ssl/mongo-client",
-		"path where the mongodb client cert is mounted")
 
 	kubeconfigPath = flag.String("kubeconfig-path", "", "path to kubeconfig file")
 
@@ -121,12 +112,6 @@ func parseFlags() (metricsPort, mongoClientCertMountPath, kubeconfigPath *string
 		"path where the fault quarantine config file is present")
 
 	dryRun = flag.Bool("dry-run", false, "flag to run fault quarantine module in dry-run mode")
-
-	circuitBreakerPercentage = flag.Int("circuit-breaker-percentage",
-		50, "percentage of nodes to cordon before tripping the circuit breaker")
-
-	circuitBreakerDuration = flag.Duration("circuit-breaker-duration",
-		5*time.Minute, "duration of the circuit breaker window")
 
 	circuitBreakerEnabled = flag.Bool("circuit-breaker-enabled", true,
 		"enable or disable fault quarantine circuit breaker")

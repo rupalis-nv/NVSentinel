@@ -53,9 +53,6 @@ func run() error {
 
 	metricsPort := flag.String("metrics-port", "2112", "port to expose Prometheus metrics on")
 
-	mongoClientCertMountPath := flag.String("mongo-client-cert-mount-path", "/etc/ssl/mongo-client",
-		"path where the mongodb client cert is mounted")
-
 	kubeconfigPath := flag.String("kubeconfig-path", "", "path to kubeconfig file")
 
 	tomlConfigPath := flag.String("config-path", "/etc/config/config.toml",
@@ -65,14 +62,11 @@ func run() error {
 
 	flag.Parse()
 
-	slog.Info("Mongo client cert", "path", *mongoClientCertMountPath)
-
 	params := initializer.InitializationParams{
-		MongoClientCertMountPath: *mongoClientCertMountPath,
-		KubeconfigPath:           *kubeconfigPath,
-		TomlConfigPath:           *tomlConfigPath,
-		MetricsPort:              *metricsPort,
-		DryRun:                   *dryRun,
+		KubeconfigPath: *kubeconfigPath,
+		TomlConfigPath: *tomlConfigPath,
+		MetricsPort:    *metricsPort,
+		DryRun:         *dryRun,
 	}
 
 	components, err := initializer.InitializeAll(ctx, params)

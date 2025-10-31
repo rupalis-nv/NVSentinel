@@ -62,16 +62,17 @@ func NewEventWatcher(
 	tokenConfig storewatcher.TokenConfig,
 	mongoPipeline mongo.Pipeline,
 	collection *mongo.Collection,
-	unprocessedEventsMetricUpdateInterval time.Duration,
 	lastProcessedObjectID LastProcessedObjectIDStore,
 ) *EventWatcher {
 	return &EventWatcher{
-		mongoConfig:                           mongoConfig,
-		tokenConfig:                           tokenConfig,
-		mongoPipeline:                         mongoPipeline,
-		collection:                            collection,
-		unprocessedEventsMetricUpdateInterval: unprocessedEventsMetricUpdateInterval,
-		lastProcessedObjectID:                 lastProcessedObjectID,
+		mongoConfig:           mongoConfig,
+		tokenConfig:           tokenConfig,
+		mongoPipeline:         mongoPipeline,
+		collection:            collection,
+		lastProcessedObjectID: lastProcessedObjectID,
+
+		unprocessedEventsMetricUpdateInterval: time.Second *
+			time.Duration(mongoConfig.UnprocessedEventsMetricUpdateIntervalSeconds),
 	}
 }
 

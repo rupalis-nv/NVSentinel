@@ -44,10 +44,7 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           args:
           - "--metrics-port={{ ((.Values.global).metricsPort) | default 2112 }}"
-          - "--mongo-client-cert-mount-path={{ .Values.clientCertMountPath }}"
           - "--dry-run={{ ((.Values.global).dryRun) | default false }}"
-          - "--circuit-breaker-percentage={{ .Values.circuitBreaker.percentage }}"
-          - "--circuit-breaker-duration={{ .Values.circuitBreaker.duration }}"
           - "--circuit-breaker-enabled={{ .Values.circuitBreaker.enabled }}"
           ports:
             - name: metrics
@@ -82,6 +79,12 @@ spec:
                   fieldPath: metadata.namespace
             - name: LOG_LEVEL
               value: "{{ .Values.logLevel }}"
+            - name: MONGODB_CLIENT_CERT_PATH
+              value: "{{ .Values.clientCertMountPath }}/tls.crt"
+            - name: MONGODB_CLIENT_KEY_PATH
+              value: "{{ .Values.clientCertMountPath }}/tls.key"
+            - name: MONGODB_CA_CERT_PATH
+              value: "{{ .Values.clientCertMountPath }}/ca.crt"
           envFrom:
             - configMapRef:
                 name: mongodb-config
