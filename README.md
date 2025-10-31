@@ -333,6 +333,7 @@ We welcome contributions! Here's how to get started:
 
 **Ways to Contribute**:
 - 🐛 Report bugs and request features via [issues](https://github.com/NVIDIA/NVSentinel/issues)
+- 🧭 See what we're working on in the [roadmap](ROADMAP.md)
 - 📝 Improve documentation
 - 🧪 Add tests and increase coverage
 - 🔧 Submit pull requests to fix issues
