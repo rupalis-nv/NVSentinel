@@ -34,7 +34,7 @@ docker-build: setup-buildx ## Build Docker image (multi-platform with cache)
 		--annotation "index:org.opencontainers.image.source=https://github.com/nvidia/nvsentinel" \
 		--annotation "index:org.opencontainers.image.licenses=Apache-2.0" \
 		--annotation "index:org.opencontainers.image.title=NVSentinel $(MODULE_NAME)" \
-		--annotation "index:org.opencontainers.image.description=Fault remediation service to help with rapid node-level issues resolution in GPU-accelerated computing environments" \
+		--annotation "index:org.opencontainers.image.description=Fault remediation service for rapid node-level issue resolution in GPU-accelerated Kubernetes environments" \
 		--annotation "index:org.opencontainers.image.version=$(VERSION)" \
 		--annotation "index:org.opencontainers.image.revision=$(GIT_COMMIT)" \
 		--annotation "index:org.opencontainers.image.created=$(BUILD_DATE)" \
@@ -71,6 +71,7 @@ docker-publish: setup-buildx ## Build and publish Docker image to registry
 		$(CACHE_FROM_ARG) \
 		$(CACHE_TO_ARG) \
 		$(DOCKER_EXTRA_ARGS) \
+		$(if $(DOCKER_METADATA_FILE),--metadata-file $(DOCKER_METADATA_FILE)) \
 		--annotation "index:org.opencontainers.image.source=https://github.com/nvidia/nvsentinel" \
 		--annotation "index:org.opencontainers.image.licenses=Apache-2.0" \
 		--annotation "index:org.opencontainers.image.title=NVSentinel $(MODULE_NAME)" \
