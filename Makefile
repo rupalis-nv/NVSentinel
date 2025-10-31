@@ -634,7 +634,7 @@ docker-main-modules:
 # Development Environment Targets
 # ============================================================================
 # Configuration variables
-CTLPTL_CONFIG_FILE ?= ctlptl-config.yaml
+CTLPTL_CONFIG_FILE ?= .ctlptl.yaml
 CLUSTER_NAME ?= kind-nvsentinel
 REGISTRY_NAME ?= ctlptl-registry
 REGISTRY_PORT ?= 5001

@@ -127,7 +127,7 @@ jobs:
       - name: Create cluster for E2E tests
         env:
           CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
-          CTLPTL_YAML: ctlptl-config.yaml
+          CTLPTL_YAML: .ctlptl.yaml
           # Make cluster names unique per architecture to avoid conflicts in parallel runs
           CLUSTER_NAME_SUFFIX: "-${{ matrix.arch }}"
         run: |
@@ -136,7 +136,7 @@ jobs:
       - name: Run E2E tests
         env:
           CI_COMMIT_REF_NAME: ${{ steps.ref-name.outputs.value }}
-          CTLPTL_YAML: ctlptl-config.yaml
+          CTLPTL_YAML: .ctlptl.yaml
           # Use same cluster name suffix for consistency
           CLUSTER_NAME_SUFFIX: "-${{ matrix.arch }}"
         run: |

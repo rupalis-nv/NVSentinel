@@ -44,7 +44,7 @@ generate_first_registry_auth() {
 
 # Function to update existing ctlptl config with first registry auth
 update_ctlptl_config() {
-    local ctlptl_config_path="${1:-ctlptl-config.yaml}"
+    local ctlptl_config_path="${1:-.ctlptl.yaml}"
     local temp_auth
     local temp_file
 
@@ -92,7 +92,7 @@ update_ctlptl_config() {
 
 # Main execution
 main() {
-    local ctlptl_config_path="${1:-ctlptl-config.yaml}"
+    local ctlptl_config_path="${1:-.ctlptl.yaml}"
 
     echo "Configuring ctlptl registry authentication..."
 

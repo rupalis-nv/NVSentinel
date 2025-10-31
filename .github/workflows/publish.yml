@@ -303,7 +303,7 @@ jobs:
       - name: Create Kind cluster using make
         env:
           CLUSTER_NAME: ${{ env.CLUSTER_NAME }}
-          CTLPTL_YAML: ctlptl-config.yaml
+          CTLPTL_YAML: .ctlptl.yaml
         run: |
           make cluster-create
 
