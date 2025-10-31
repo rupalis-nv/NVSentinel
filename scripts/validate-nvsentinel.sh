@@ -280,7 +280,8 @@ echo "=== DaemonSets ==="
 check_daemonset "nvsentinel-platform-connector"
 check_daemonset "nvsentinel-gpu-health-monitor-dcgm-3.x"
 check_daemonset "nvsentinel-gpu-health-monitor-dcgm-4.x"
-check_daemonset "nvsentinel-syslog-health-monitor"
+check_daemonset "nvsentinel-syslog-health-monitor-regular"
+check_daemonset "nvsentinel-syslog-health-monitor-kata"
 
 # Pod health
 echo "=== Pod Health ==="

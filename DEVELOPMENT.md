@@ -213,8 +213,8 @@ Go module dependencies are handled automatically:
    vim health-monitors/syslog-health-monitor/pkg/monitor/monitor.go
 
    # View logs in Tilt UI at http://localhost:10350
-   # Or use kubectl for specific logs
-   kubectl logs -f deployment/syslog-health-monitor -n nvsentinel
+   # Or use kubectl for specific logs (note: syslog-health-monitor runs as DaemonSet with -regular and -kata variants)
+   kubectl logs -f daemonset/nvsentinel-syslog-health-monitor-regular -n nvsentinel
    ```
 
 3. **Test Changes**
