@@ -18,6 +18,7 @@ load('ext://namespace', 'namespace_create', 'namespace_inject')
 update_settings(k8s_upsert_timeout_secs=600)
 
 num_gpu_nodes = int(os.getenv('NUM_GPU_NODES', '50'))
+num_kata_test_nodes = int(os.getenv('NUM_KATA_TEST_NODES', '5'))
 
 helm_repo('jetstack', 'https://charts.jetstack.io')
 helm_resource(
@@ -65,9 +66,18 @@ helm_resource(
 namespace_create('gpu-operator')
 namespace_create('nvsentinel')
 
+# Create regular GPU nodes (all NUM_GPU_NODES are regular nodes)
 kwok_node_template = str(read_file('./kwok-node-template.yaml'))
 for i in range(num_gpu_nodes):
     node_yaml = kwok_node_template.replace('PLACEHOLDER', str(i))
+    k8s_yaml(blob(node_yaml))
+
+# Create separate Kata test nodes (in addition to regular nodes)
+# These are named differently (kwok-kata-test-node-*) to avoid conflicts
+# Set NUM_KATA_TEST_NODES=0 to disable kata testing
+kwok_kata_test_node_template = str(read_file('./kwok-kata-test-node-template.yaml'))
+for i in range(num_kata_test_nodes):
+    node_yaml = kwok_kata_test_node_template.replace('PLACEHOLDER', str(i))
     k8s_yaml(blob(node_yaml))
 
 k8s_yaml('./nvidia-driver-daemonset.yaml')
@@ -125,10 +135,14 @@ k8s_resource(
     port_forwards='9090:9090',
 )
 
-kwok_node_names = ['kwok-node-' + str(i) + ':node' for i in range(num_gpu_nodes)]
+# Group all KWOK nodes (regular GPU nodes + separate kata test nodes) for resource management
+kwok_regular_node_names = ['kwok-node-' + str(i) + ':node' for i in range(num_gpu_nodes)]
+kwok_kata_test_node_names = ['kwok-kata-test-node-' + str(i) + ':node' for i in range(num_kata_test_nodes)]
+kwok_all_node_names = kwok_regular_node_names + kwok_kata_test_node_names
+
 k8s_resource(
     new_name='kwok-fake-nodes',
-    objects=kwok_node_names,
+    objects=kwok_all_node_names,
     resource_deps=['kwok', 'nvsentinel-platform-connector', 'nvsentinel-fault-quarantine', 'nvsentinel-fault-remediation', 
         'nvsentinel-labeler', 'nvsentinel-node-drainer', 'nvsentinel-mongodb', 'simple-health-client'
     ], 

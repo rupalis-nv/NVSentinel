@@ -439,13 +439,25 @@ func TestPollTillCACertIsSuccessfullyMounted(t *testing.T) {
 		certPath := filepath.Join(tempDir, "ca.crt")
 		certContent := []byte("delayed certificate content")
 
+		// Write cert after a delay to simulate delayed mount
+		written := make(chan struct{})
 		go func() {
-			time.Sleep(1 * time.Second)
-			os.WriteFile(certPath, certContent, 0644)
+			time.Sleep(1500 * time.Millisecond) // Increase delay to ensure polling starts first
+			err := os.WriteFile(certPath, certContent, 0600)
+			if err != nil {
+				t.Logf("Failed to write cert file: %v", err)
+			}
+			close(written)
 		}()
 
-		result, err := pollTillCACertIsMountedSuccessfully(certPath, 5*time.Second, 500*time.Millisecond)
+		// Should retry and eventually read the cert
+		result, err := pollTillCACertIsMountedSuccessfully(certPath, 10*time.Second, 300*time.Millisecond)
+
+		// Wait for goroutine to finish
+		<-written
+
 		require.NoError(t, err)
-		require.Equal(t, certContent, result)
+		require.NotEmpty(t, result, "expected cert content but got empty slice")
+		require.Equal(t, certContent, result, "cert content mismatch")
 	})
 }

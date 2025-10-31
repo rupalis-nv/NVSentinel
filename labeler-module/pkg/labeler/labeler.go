@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/nvidia/nvsentinel/commons/pkg/stringutil"
 	"github.com/nvidia/nvsentinel/labeler-module/pkg/metrics"
 
 	v1 "k8s.io/api/core/v1"
@@ -34,11 +35,17 @@ import (
 )
 
 const (
-	DCGMVersionLabel     = "nvsentinel.dgxc.nvidia.com/dcgm.version"
-	DriverInstalledLabel = "nvsentinel.dgxc.nvidia.com/driver.installed"
+	DCGMVersionLabel        = "nvsentinel.dgxc.nvidia.com/dcgm.version"
+	DriverInstalledLabel    = "nvsentinel.dgxc.nvidia.com/driver.installed"
+	KataEnabledLabel        = "nvsentinel.dgxc.nvidia.com/kata.enabled"
+	KataRuntimeDefaultLabel = "katacontainers.io/kata-runtime"
 
 	NodeDCGMIndex   = "nodeDCGM"
 	NodeDriverIndex = "nodeDriver"
+
+	// Label values
+	LabelValueTrue  = "true"
+	LabelValueFalse = "false"
 )
 
 var (
@@ -48,24 +55,33 @@ var (
 
 // Labeler manages node labeling based on pod information
 type Labeler struct {
-	clientset      kubernetes.Interface
-	informer       cache.SharedIndexInformer
-	informerSynced cache.InformerSynced
-	ctx            context.Context
-	dcgmAppLabel   string
-	driverAppLabel string
+	clientset       kubernetes.Interface
+	podInformer     cache.SharedIndexInformer
+	nodeInformer    cache.SharedIndexInformer
+	informersSynced []cache.InformerSynced
+	ctx             context.Context
+	dcgmAppLabel    string
+	driverAppLabel  string
+	kataLabels      []string // Instance-specific kata labels
 }
 
 // NewLabeler creates a new Labeler instance
 // nolint: cyclop // todo
 func NewLabeler(clientset kubernetes.Interface, resyncPeriod time.Duration,
-	dcgmApp, driverApp string) (*Labeler, error) {
+	dcgmApp, driverApp, kataLabelOverride string) (*Labeler, error) {
 	labelSelector, err := labels.Parse(fmt.Sprintf("app in (%s,%s)", dcgmApp, driverApp))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse label selector: %w", err)
 	}
 
-	informerFactory := informers.NewSharedInformerFactoryWithOptions(
+	// Build kata labels list with default plus optional override
+	kataLabels := []string{KataRuntimeDefaultLabel}
+	if kataLabelOverride != "" {
+		kataLabels = append(kataLabels, kataLabelOverride)
+	}
+
+	// Create pod informer factory with label selector
+	podInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		clientset,
 		resyncPeriod,
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
@@ -73,7 +89,13 @@ func NewLabeler(clientset kubernetes.Interface, resyncPeriod time.Duration,
 		}),
 	)
 
-	err = informerFactory.Core().V1().Pods().Informer().GetIndexer().AddIndexers(
+	// Create node informer factory (no filtering needed)
+	nodeInformerFactory := informers.NewSharedInformerFactory(clientset, resyncPeriod)
+
+	podInformer := podInformerFactory.Core().V1().Pods().Informer()
+	nodeInformer := nodeInformerFactory.Core().V1().Nodes().Informer()
+
+	err = podInformer.GetIndexer().AddIndexers(
 		cache.Indexers{
 			NodeDCGMIndex: func(obj any) ([]string, error) {
 				pod, ok := obj.(*v1.Pod)
@@ -103,15 +125,33 @@ func NewLabeler(clientset kubernetes.Interface, resyncPeriod time.Duration,
 	}
 
 	l := &Labeler{
-		clientset:      clientset,
-		informer:       informerFactory.Core().V1().Pods().Informer(),
-		informerSynced: informerFactory.Core().V1().Pods().Informer().HasSynced,
-		ctx:            context.Background(),
-		dcgmAppLabel:   dcgmApp,
-		driverAppLabel: driverApp,
+		clientset:       clientset,
+		podInformer:     podInformer,
+		nodeInformer:    nodeInformer,
+		informersSynced: []cache.InformerSynced{podInformer.HasSynced, nodeInformer.HasSynced},
+		ctx:             context.Background(),
+		dcgmAppLabel:    dcgmApp,
+		driverAppLabel:  driverApp,
+		kataLabels:      kataLabels,
 	}
 
-	_, err = l.informer.AddEventHandler(cache.FilteringResourceEventHandler{
+	// Register event handlers
+	if err := l.registerPodEventHandlers(); err != nil {
+		return nil, err
+	}
+
+	if err := l.registerNodeEventHandlers(); err != nil {
+		return nil, err
+	}
+
+	slog.Info("Labeler created, watching DCGM and driver pods, and nodes for kata detection")
+
+	return l, nil
+}
+
+// registerPodEventHandlers sets up event handlers for pod informer
+func (l *Labeler) registerPodEventHandlers() error {
+	_, err := l.podInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj any) bool {
 			pod, ok := obj.(*v1.Pod)
 			if !ok {
@@ -162,27 +202,47 @@ func NewLabeler(clientset kubernetes.Interface, resyncPeriod time.Duration,
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to add event handler: %w", err)
+		return fmt.Errorf("failed to add pod event handler: %w", err)
 	}
 
-	slog.Info("Labeler created, watching DCGM and driver pods")
+	return nil
+}
 
-	return l, nil
+// registerNodeEventHandlers sets up event handlers for node informer
+func (l *Labeler) registerNodeEventHandlers() error {
+	_, err := l.nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			if err := l.handleNodeEvent(obj); err != nil {
+				slog.Error("Failed to handle node add event", "error", err)
+			}
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			if err := l.handleNodeEvent(newObj); err != nil {
+				slog.Error("Failed to handle node update event", "error", err)
+			}
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add node event handler: %w", err)
+	}
+
+	return nil
 }
 
 // Run starts the labeler and waits for cache sync
 func (l *Labeler) Run(ctx context.Context) error {
 	l.ctx = ctx
 
-	go l.informer.Run(ctx.Done())
+	go l.podInformer.Run(ctx.Done())
+	go l.nodeInformer.Run(ctx.Done())
 
-	slog.Info("Waiting for Labeler cache to sync...")
+	slog.Info("Waiting for Labeler caches to sync...")
 
-	if ok := cache.WaitForCacheSync(ctx.Done(), l.informerSynced); !ok {
+	if ok := cache.WaitForCacheSync(ctx.Done(), l.informersSynced...); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	slog.Info("Labeler cache synced")
+	slog.Info("Labeler caches synced")
 
 	<-ctx.Done()
 	slog.Info("Labeler stopped")
@@ -192,7 +252,7 @@ func (l *Labeler) Run(ctx context.Context) error {
 
 // getDCGMVersionForNode returns the expected DCGM version for a specific node
 func (l *Labeler) getDCGMVersionForNode(nodeName string) (string, error) {
-	objs, err := l.informer.GetIndexer().ByIndex(NodeDCGMIndex, nodeName)
+	objs, err := l.podInformer.GetIndexer().ByIndex(NodeDCGMIndex, nodeName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get DCGM pods by node index for node %s: %w", nodeName, err)
 	}
@@ -217,7 +277,7 @@ func (l *Labeler) getDCGMVersionForNode(nodeName string) (string, error) {
 
 // getDriverLabelForNode returns the expected driver label value for a specific node
 func (l *Labeler) getDriverLabelForNode(nodeName string) (string, error) {
-	objs, err := l.informer.GetIndexer().ByIndex(NodeDriverIndex, nodeName)
+	objs, err := l.podInformer.GetIndexer().ByIndex(NodeDriverIndex, nodeName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get driver pods by node index for node %s: %w", nodeName, err)
 	}
@@ -229,17 +289,49 @@ func (l *Labeler) getDriverLabelForNode(nodeName string) (string, error) {
 		}
 
 		if podutil.IsPodReady(pod) {
-			return "true", nil
+			return LabelValueTrue, nil
 		}
 	}
 
 	return "", nil
 }
 
+// getKataLabelForNode detects if Kata is enabled on the specified node by checking node metadata.
+// Returns "true" if Kata is enabled, "false" if not.
+func (l *Labeler) getKataLabelForNode(node *v1.Node) string {
+	// Check if Kata is enabled using multiple detection methods
+	if isKataEnabled(node, l.kataLabels) {
+		return LabelValueTrue
+	}
+
+	return LabelValueFalse
+}
+
+// isKataEnabled checks if a node has Kata Containers enabled by examining node labels.
+// Checks the configured kata labels (either custom override or default) for truthy values.
+// Returns true if ANY of the configured labels has a truthy value (OR logic).
+// Truthy values are: "true", "enabled", "1", "yes" (case-insensitive).
+func isKataEnabled(node *v1.Node, kataLabels []string) bool {
+	for _, label := range kataLabels {
+		if value, exists := node.Labels[label]; exists && stringutil.IsTruthyValue(value) {
+			slog.Debug("Kata detected",
+				"source", "label",
+				"node", node.Name,
+				"label", label,
+				"value", value,
+			)
+
+			return true
+		}
+	}
+
+	return false
+}
+
 // getDCGMVersionForNodeExcluding returns the expected DCGM version for a specific node,
 // excluding a specific pod from consideration (used for delete events)
 func (l *Labeler) getDCGMVersionForNodeExcluding(nodeName string, excludePod *v1.Pod) (string, error) {
-	objs, err := l.informer.GetIndexer().ByIndex(NodeDCGMIndex, nodeName)
+	objs, err := l.podInformer.GetIndexer().ByIndex(NodeDCGMIndex, nodeName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get DCGM pods by node index for node %s: %w", nodeName, err)
 	}
@@ -270,7 +362,7 @@ func (l *Labeler) getDCGMVersionForNodeExcluding(nodeName string, excludePod *v1
 // getDriverLabelForNodeExcluding returns the expected driver label value for a specific node,
 // excluding a specific pod from consideration (used for delete events)
 func (l *Labeler) getDriverLabelForNodeExcluding(nodeName string, excludePod *v1.Pod) (string, error) {
-	objs, err := l.informer.GetIndexer().ByIndex(NodeDriverIndex, nodeName)
+	objs, err := l.podInformer.GetIndexer().ByIndex(NodeDriverIndex, nodeName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get driver pods by node index for node %s: %w", nodeName, err)
 	}
@@ -287,16 +379,15 @@ func (l *Labeler) getDriverLabelForNodeExcluding(nodeName string, excludePod *v1
 		}
 
 		if podutil.IsPodReady(pod) {
-			return "true", nil
+			return LabelValueTrue, nil
 		}
 	}
 
 	return "", nil
 }
 
-// updateNodeLabels updates node labels based on expected DCGM and driver label values
-// nolint: cyclop // todo
-func (l *Labeler) updateNodeLabels(nodeName, expectedDCGMVersion, expectedDriverLabel string) error {
+// updateNodeLabelsForPod updates only DCGM and driver labels (kata is handled separately by node events)
+func (l *Labeler) updateNodeLabelsForPod(nodeName, expectedDCGMVersion, expectedDriverLabel string) error {
 	updateStartTime := time.Now()
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		node, err := l.clientset.CoreV1().Nodes().Get(l.ctx, nodeName, metav1.GetOptions{})
@@ -335,17 +426,13 @@ func (l *Labeler) updateNodeLabels(nodeName, expectedDCGMVersion, expectedDriver
 		}
 
 		if !needsUpdate {
-			slog.Debug("Node already has correct labels", "node", nodeName)
+			slog.Debug("Node already has correct pod-related labels", "node", nodeName)
 			return nil
 		}
 
 		_, err = l.clientset.CoreV1().Nodes().Update(l.ctx, node, metav1.UpdateOptions{})
 
-		if err != nil {
-			return fmt.Errorf("failed to update node %s: %w", nodeName, err)
-		}
-
-		return nil
+		return err
 	})
 
 	if err != nil {
@@ -354,6 +441,52 @@ func (l *Labeler) updateNodeLabels(nodeName, expectedDCGMVersion, expectedDriver
 	}
 
 	metrics.NodeUpdateDuration.Observe(time.Since(updateStartTime).Seconds())
+
+	return nil
+}
+
+// handleNodeEvent processes node events to update kata detection label
+func (l *Labeler) handleNodeEvent(obj any) error {
+	node, ok := obj.(*v1.Node)
+	if !ok {
+		return fmt.Errorf("node event: expected Node object, got %T", obj)
+	}
+
+	expectedKataLabel := l.getKataLabelForNode(node)
+
+	// Only update kata label, leave DCGM/driver labels alone
+	return l.updateKataLabel(node.Name, expectedKataLabel)
+}
+
+// updateKataLabel updates only the kata label on a node
+func (l *Labeler) updateKataLabel(nodeName, expectedKataLabel string) error {
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		node, err := l.clientset.CoreV1().Nodes().Get(l.ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		if node.Labels == nil {
+			node.Labels = make(map[string]string)
+		}
+
+		currentKataLabel := node.Labels[KataEnabledLabel]
+		if currentKataLabel == expectedKataLabel {
+			slog.Debug("Node already has correct kata label", "node", nodeName, "kata", expectedKataLabel)
+			return nil
+		}
+
+		node.Labels[KataEnabledLabel] = expectedKataLabel
+		slog.Info("Setting Kata enabled label on node", "node", nodeName, "kata", expectedKataLabel)
+
+		_, err = l.clientset.CoreV1().Nodes().Update(l.ctx, node, metav1.UpdateOptions{})
+
+		return err
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to update kata label for %s: %w", nodeName, err)
+	}
 
 	return nil
 }
@@ -383,7 +516,7 @@ func (l *Labeler) handlePodDeleteEvent(obj any) error {
 		return fmt.Errorf("failed to get driver label for node %s excluding deleted pod: %w", pod.Spec.NodeName, err)
 	}
 
-	return l.updateNodeLabels(pod.Spec.NodeName, expectedDCGMVersion, expectedDriverLabel)
+	return l.updateNodeLabelsForPod(pod.Spec.NodeName, expectedDCGMVersion, expectedDriverLabel)
 }
 
 // handlePodEvent processes all pod events (add, update) idempotently
@@ -408,5 +541,5 @@ func (l *Labeler) handlePodEvent(obj any) error {
 		return fmt.Errorf("failed to get driver label for node %s: %w", pod.Spec.NodeName, err)
 	}
 
-	return l.updateNodeLabels(pod.Spec.NodeName, expectedDCGMVersion, expectedDriverLabel)
+	return l.updateNodeLabelsForPod(pod.Spec.NodeName, expectedDCGMVersion, expectedDriverLabel)
 }

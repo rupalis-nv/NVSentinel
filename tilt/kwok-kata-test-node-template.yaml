@@ -18,10 +18,12 @@ metadata:
   annotations:
     node.alpha.kubernetes.io/ttl: "0"
     kwok.x-k8s.io/node: fake
+    # Kata annotation - one of the detection methods
+    io.katacontainers.config.runtime.oci_runtime: kata-runtime
   labels:
     beta.kubernetes.io/arch: amd64
     beta.kubernetes.io/os: linux
-    kubernetes.io/hostname: kwok-node-PLACEHOLDER
+    kubernetes.io/hostname: kwok-kata-test-node-PLACEHOLDER
     kubernetes.io/os: linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
@@ -29,9 +31,9 @@ metadata:
     nvidia.com/gpu.deploy.dcgm: "true"
     nvidia.com/gpu.deploy.driver: "true"
     type: kwok
-    # Explicitly mark as non-kata for detection
-    katacontainers.io/kata-runtime: "false"
-  name: kwok-node-PLACEHOLDER
+    # Kata label - another detection method (will be set by labeler, but pre-setting for visibility)
+    katacontainers.io/kata-runtime: "true"
+  name: kwok-kata-test-node-PLACEHOLDER
 spec:
   taints:
   - effect: NoSchedule
@@ -50,7 +52,8 @@ status:
   nodeInfo:
     architecture: amd64
     bootID: ""
-    containerRuntimeVersion: ""
+    # Kata runtime version - primary detection method
+    containerRuntimeVersion: containerd://1.7.0-kata
     kernelVersion: ""
     kubeProxyVersion: fake
     kubeletVersion: fake

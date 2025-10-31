@@ -27,6 +27,7 @@ import (
 
 	"github.com/nvidia/nvsentinel/commons/pkg/logger"
 	"github.com/nvidia/nvsentinel/commons/pkg/server"
+	"github.com/nvidia/nvsentinel/commons/pkg/stringutil"
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	fd "github.com/nvidia/nvsentinel/health-monitors/syslog-health-monitor/pkg/syslog-monitor"
 	"golang.org/x/sync/errgroup"
@@ -63,6 +64,8 @@ var (
 	metricsPort         = flag.String("metrics-port", "2112", "Port to expose Prometheus metrics on")
 	xidAnalyserEndpoint = flag.String("xid-analyser-endpoint", "",
 		"Endpoint to the XID analyser service.")
+	kataEnabled = flag.String("kata-enabled", "false",
+		"Indicates if this monitor is running in Kata Containers mode (set by DaemonSet variant).")
 )
 
 // ConfigFile matches the top-level structure of the YAML config file
@@ -90,7 +93,7 @@ func run() error {
 		return fmt.Errorf("NODE_NAME env not set and --node-name flag not provided, cannot run")
 	}
 
-	slog.Info("Using node name", "node", nodeName)
+	slog.Info("Configuration", "node", nodeName, "kata-enabled", *kataEnabled)
 
 	// Root context canceled on SIGINT/SIGTERM so goroutines can exit cleanly.
 	root := context.Background()
@@ -127,6 +130,31 @@ func run() error {
 
 	if len(config.Checks) == 0 {
 		return fmt.Errorf("no checks defined in the config file")
+	}
+
+	// Handle kata-specific configuration
+	if stringutil.IsTruthyValue(*kataEnabled) {
+		slog.Info("Kata mode enabled, adding containerd service filter and removing SysLogsSXIDError check")
+
+		// Add containerd service filter to all checks for kata nodes
+		for i := range config.Checks {
+			if config.Checks[i].Tags == nil {
+				config.Checks[i].Tags = []string{"-u", "containerd.service"}
+			} else {
+				config.Checks[i].Tags = append(config.Checks[i].Tags, "-u", "containerd.service")
+			}
+		}
+
+		// Remove SysLogsSXIDError check for kata nodes (not supported in kata environment)
+		filteredChecks := make([]fd.CheckDefinition, 0, len(config.Checks))
+
+		for _, check := range config.Checks {
+			if check.Name != "SysLogsSXIDError" {
+				filteredChecks = append(filteredChecks, check)
+			}
+		}
+
+		config.Checks = filteredChecks
 	}
 
 	slog.Info("Creating syslog monitor", "checksCount", len(config.Checks))

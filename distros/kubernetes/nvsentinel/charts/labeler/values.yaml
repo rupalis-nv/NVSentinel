@@ -20,6 +20,15 @@ replicaCount: 1
 
 logLevel: info
 
+# Kata Containers detection configuration
+# Additional node label to check when detecting Kata Containers support. If specified, the labeler
+# will check BOTH this custom label AND the default 'katacontainers.io/kata-runtime' label as
+# input sources for detection. The labeler will then set the output label 
+# 'nvsentinel.dgxc.nvidia.com/kata.enabled' to "true" or "false" based on the detection result.
+# Example: 'custom.kata.label' or 'io.katacontainers.config.runtime.oci_runtime'
+# Note: The input label value must be truthy (case-insensitive): "true", "enabled", "1", or "yes"
+kataLabelOverride: ""
+
 image:
   repository: ghcr.io/nvidia/nvsentinel/labeler-module
   pullPolicy: IfNotPresent

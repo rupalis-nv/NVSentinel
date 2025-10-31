@@ -131,6 +131,9 @@ node-drainer:
 
 labeler:
   logLevel: debug
+  # Test kata label override with the annotation present on kata test nodes
+  # Uncomment to test custom kata detection:
+  # kataLabelOverride: "io.katacontainers.config.runtime.oci_runtime"
 
 health-events-analyzer:
   logLevel: debug

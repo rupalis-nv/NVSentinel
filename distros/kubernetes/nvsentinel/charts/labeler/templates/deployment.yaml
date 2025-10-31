@@ -48,6 +48,13 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.global.labeler.image.repository }}:{{ .Values.global.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--metrics-port"
+            - "{{ .Values.global.metricsPort }}"
+            {{- if .Values.kataLabelOverride }}
+            - "--kata-label"
+            - "{{ .Values.kataLabelOverride }}"
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           ports:

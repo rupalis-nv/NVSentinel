@@ -193,11 +193,6 @@ global:
     # Prometheus metrics port for cleanup service
     cleanupMetricsPort: 9002
 
-  # Kata Containers integration - for enhanced security isolation
-  kata:
-    # Enable Kata Containers runtime support
-    enabled: false
-
 # Platform Connector configuration - central communication hub for all health monitors
 platformConnector:
   image:
