@@ -55,22 +55,22 @@ spec:
       {{- end }}
       initContainers:
       - name: wait-for-mongodb-secret
-        image: "{{ .Values.global.mongodbStore.images.kubectl.repository }}:{{ .Values.global.mongodbStore.images.kubectl.tag }}"
-        imagePullPolicy: {{ .Values.global.mongodbStore.images.kubectl.pullPolicy }}
+        image: "{{ .Values.mongodb.helperImages.kubectl.repository }}:{{ .Values.mongodb.helperImages.kubectl.tag }}"
+        imagePullPolicy: {{ .Values.mongodb.helperImages.kubectl.pullPolicy }}
         command:
         - sh
         - -c
         - |
           echo "Waiting for MongoDB secret to be available..."
-          while ! kubectl get secret nvsentinel-mongodb -n {{ .Release.Namespace }} >/dev/null 2>&1; do
-            echo "Secret nvsentinel-mongodb not found yet, waiting..."
+          while ! kubectl get secret mongodb -n {{ .Release.Namespace }} >/dev/null 2>&1; do
+            echo "Secret mongodb not found yet, waiting..."
             sleep 5
           done
-          echo "Secret nvsentinel-mongodb is available, proceeding..."
+          echo "Secret mongodb is available, proceeding..."
       containers:
       - name: mongo-client
-        image: "{{ .Values.global.mongodbStore.images.mongosh.repository }}:{{ .Values.global.mongodbStore.images.mongosh.tag }}"
-        imagePullPolicy: {{ .Values.global.mongodbStore.images.mongosh.pullPolicy }}
+        image: "{{ .Values.mongodb.helperImages.mongosh.repository }}:{{ .Values.mongodb.helperImages.mongosh.tag }}"
+        imagePullPolicy: {{ .Values.mongodb.helperImages.mongosh.pullPolicy }}
         command:
           - sh
           - -c
@@ -175,7 +175,7 @@ spec:
           - name: MONGODB_ROOT_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: nvsentinel-mongodb
+                name: mongodb
                 key: mongodb-root-password
           - name: MONGODB_APPLICATION_USER_DN
             value: "CN=mongo-user-client,OU=DGXC,O=Nvidia,L=SantaClara,ST=California,C=US"

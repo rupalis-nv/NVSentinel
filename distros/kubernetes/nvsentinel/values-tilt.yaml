@@ -23,8 +23,6 @@ global:
   
   affinity: {}
   
-  podAnnotations: {}
-  
   systemNodeSelector:
     node-role.kubernetes.io/control-plane: ""
   
@@ -59,29 +57,12 @@ global:
 
   inclusterFileServer:
     enabled: false
-
-  mongodbStore:
-    images:
-      kubectl:
-        repository: bitnamilegacy/kubectl
-        tag: "1.30.6"
-        pullPolicy: IfNotPresent
-      mongosh:
-        repository: rtsp/mongosh
-        tag: "2.5.2"
-        pullPolicy: IfNotPresent
-
-  kata:
-    enabled: false
   
   janitor:
     enabled: true
 
-platformConnector:
   mongodbStore:
     enabled: true
-    clientCertMountPath: "/etc/ssl/mongo-client"
-
 
 mongodb-store:
   mongodb:

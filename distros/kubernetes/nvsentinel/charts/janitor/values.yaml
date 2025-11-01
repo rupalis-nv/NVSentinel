@@ -17,13 +17,12 @@ replicaCount: 1
 
 # Image configuration
 image:
-  repository: janitor
+  repository: ghcr.io/nvidia/nvsentinel/janitor
   pullPolicy: IfNotPresent
-  tag: "v1"
+  tag: ""
 
-imagePullSecrets: []
 nameOverride: ""
-fullnameOverride: ""
+fullnameOverride: "janitor"
 
 serviceAccount:
   # Specifies whether a service account should be created

@@ -13,6 +13,19 @@
 # limitations under the License.
 
 mongodb:
+  # Helper images for MongoDB operations
+  helperImages:
+    # kubectl image for Kubernetes operations in init containers
+    kubectl:
+      repository: docker.io/bitnamilegacy/kubectl
+      tag: "1.30.6"
+      pullPolicy: IfNotPresent
+    # mongosh image for MongoDB shell operations
+    mongosh:
+      repository: ghcr.io/rtsp/docker-mongosh
+      tag: "2.5.2"
+      pullPolicy: IfNotPresent
+
   global:
     imagePullSecrets: []
   image:
@@ -62,8 +75,8 @@ mongodb:
 
   initContainers:
     - name: create-mongodb-credentials
-      image: "{{ .Values.global.mongodbStore.images.kubectl.repository }}:{{ .Values.global.mongodbStore.images.kubectl.tag }}"
-      imagePullPolicy: "{{ .Values.global.mongodbStore.images.kubectl.pullPolicy }}"
+      image: "{{ .Values.helperImages.kubectl.repository }}:{{ .Values.helperImages.kubectl.tag }}"
+      imagePullPolicy: "{{ .Values.helperImages.kubectl.pullPolicy }}"
       command:
         - sh
         - -c
@@ -71,16 +84,16 @@ mongodb:
           set -e
           
           # Check if MongoDB credentials secret exists
-          secret=$(kubectl get secret nvsentinel-mongodb -n {{ .Release.Namespace }} --ignore-not-found)
+          secret=$(kubectl get secret mongodb -n {{ .Release.Namespace }} --ignore-not-found)
           if [ -z "$secret" ]; then
-            echo "Secret nvsentinel-mongodb does not exist, creating it with random values..."
+            echo "Secret mongodb does not exist, creating it with random values..."
             
             # Generate random passwords (32 chars, alphanumeric)
             ROOT_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -d '+/=' | cut -c1-32)
             REPLICA_SET_KEY=$(head -c 24 /dev/urandom | base64 | tr -d '+/=' | cut -c1-32)
             
             # Create the secret with annotation in a single command
-            kubectl create secret generic nvsentinel-mongodb \
+            kubectl create secret generic mongodb \
               -n {{ .Release.Namespace }} \
               --from-literal=mongodb-root-password="$ROOT_PASSWORD" \
               --from-literal=mongodb-replica-set-key="$REPLICA_SET_KEY" \
@@ -90,10 +103,10 @@ mongodb:
               sed '/^metadata:/a\  annotations:\n    helm.sh/resource-policy: keep' | \
               kubectl apply -f -
             
-            echo "Secret nvsentinel-mongodb created with random credentials."
+            echo "Secret mongodb created with random credentials."
             echo "NOTE: These credentials will be preserved for data retention."
           else
-            echo "Secret nvsentinel-mongodb already exists, will reuse existing credentials..."
+            echo "Secret mongodb already exists, will reuse existing credentials..."
             echo "This ensures data retention across reinstalls."
           fi
           
@@ -101,8 +114,8 @@ mongodb:
           echo "=============================="
     
     - name: create-certmanager-resources
-      image: "{{ .Values.global.mongodbStore.images.kubectl.repository }}:{{ .Values.global.mongodbStore.images.kubectl.tag }}"
-      imagePullPolicy: "{{ .Values.global.mongodbStore.images.kubectl.pullPolicy }}"
+      image: "{{ .Values.helperImages.kubectl.repository }}:{{ .Values.helperImages.kubectl.tag }}"
+      imagePullPolicy: "{{ .Values.helperImages.kubectl.pullPolicy }}"
       command:
         - sh
         - -c
@@ -147,7 +160,7 @@ mongodb:
     rootUser: root
     # The initContainer will create this secret if it doesn't exist with
     # random credentials, or reuse it if it exists (for data retention)
-    existingSecret: "nvsentinel-mongodb"
+    existingSecret: "mongodb"
 
   tls:
     enabled: true
@@ -194,4 +207,4 @@ mongodb:
     args:
       - |
         export HOSTNAME=$(hostname)
-        /bin/mongodb_exporter --collector.diagnosticdata --collector.replicasetstatus --compatible-mode --mongodb.direct-connect --mongodb.global-conn-pool --web.listen-address ":9216" --mongodb.uri "mongodb://$MONGODB_ROOT_USER:$(echo $MONGODB_ROOT_PASSWORD | sed -r "s/@/%40/g;s/:/%3A/g")@${HOSTNAME}.nvsentinel-mongodb-headless.nvsentinel.svc.cluster.local:27017/admin?tls=true&tlsCertificateKeyFile=/certs/mongodb.pem&tlsCAFile=/certs/mongodb-ca-cert&connectTimeoutMS=30000&serverSelectionTimeoutMS=30000"
+        /bin/mongodb_exporter --collector.diagnosticdata --collector.replicasetstatus --compatible-mode --mongodb.direct-connect --mongodb.global-conn-pool --web.listen-address ":9216" --mongodb.uri "mongodb://$MONGODB_ROOT_USER:$(echo $MONGODB_ROOT_PASSWORD | sed -r "s/@/%40/g;s/:/%3A/g")@${HOSTNAME}.mongodb-headless.nvsentinel.svc.cluster.local:27017/admin?tls=true&tlsCertificateKeyFile=/certs/mongodb.pem&tlsCAFile=/certs/mongodb-ca-cert&connectTimeoutMS=30000&serverSelectionTimeoutMS=30000"

@@ -139,7 +139,7 @@ To verify any NVSentinel image manually using Cosign CLI:
 ### Cosign CLI
 
 ```shell
-export IMAGE="ghcr.io/nvidia/nvsentinel/fault-quarantine-module"
+export IMAGE="ghcr.io/nvidia/nvsentinel/fault-quarantine"
 export DIGEST="sha256:850e8fd35bc6b9436fc9441c055ba0f7e656fb438320e933b086a34d35d09fd6"
 
 cosign verify-attestation "${IMAGE}@${DIGEST}" \
@@ -173,7 +173,7 @@ metadata:
 spec:
   containers:
   - name: fault-quarantine
-    image: ghcr.io/nvidia/nvsentinel/fault-quarantine-module@sha256:850e8fd35bc6b9436fc9441c055ba0f7e656fb438320e933b086a34d35d09fd6
+    image: ghcr.io/nvidia/nvsentinel/fault-quarantine@sha256:850e8fd35bc6b9436fc9441c055ba0f7e656fb438320e933b086a34d35d09fd6
 ```
 
 This should be **allowed** if the image has valid attestations signed by the official workflow.
@@ -189,7 +189,7 @@ metadata:
 spec:
   containers:
   - name: fault-quarantine
-    image: ghcr.io/nvidia/nvsentinel/fault-quarantine-module:latest
+    image: ghcr.io/nvidia/nvsentinel/fault-quarantine:latest
 ```
 
 This should be **blocked** with an error message about missing or invalid attestations.

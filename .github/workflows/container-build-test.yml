@@ -61,9 +61,9 @@ jobs:
             make_command: 'make -C health-monitors/syslog-health-monitor docker-build'
           # Log Collection (Docker-based)
           - component: log-collector
-            make_command: 'make -C nvsentinel-log-collector docker-build-log-collector'
+            make_command: 'make -C log-collector docker-build-log-collector'
           - component: file-server-cleanup
-            make_command: 'make -C nvsentinel-log-collector docker-build-file-server-cleanup'
+            make_command: 'make -C log-collector docker-build-file-server-cleanup'
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
@@ -106,13 +106,13 @@ jobs:
             path: .
           - module: health-events-analyzer
             path: .
-          - module: fault-quarantine-module
+          - module: fault-quarantine
             path: .
-          - module: labeler-module
+          - module: labeler
             path: .
-          - module: node-drainer-module
+          - module: node-drainer
             path: .
-          - module: fault-remediation-module
+          - module: fault-remediation
             path: .
           - module: janitor
             path: .

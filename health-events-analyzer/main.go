@@ -28,7 +28,7 @@ import (
 	config "github.com/nvidia/nvsentinel/health-events-analyzer/pkg/config"
 	"github.com/nvidia/nvsentinel/health-events-analyzer/pkg/publisher"
 	"github.com/nvidia/nvsentinel/health-events-analyzer/pkg/reconciler"
-	"github.com/nvidia/nvsentinel/store-client-sdk/pkg/storewatcher"
+	"github.com/nvidia/nvsentinel/store-client/pkg/storewatcher"
 	"golang.org/x/sync/errgroup"
 
 	"go.mongodb.org/mongo-driver/bson"

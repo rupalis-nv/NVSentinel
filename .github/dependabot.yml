@@ -53,7 +53,7 @@ updates:
     labels: ["dependencies"]
 
   - package-ecosystem: "gomod"
-    directory: "/store-client-sdk"
+    directory: "/store-client"
     target-branch: "main"
     schedule:
       interval: "weekly"
@@ -68,28 +68,28 @@ updates:
 
   # Fault Management
   - package-ecosystem: "gomod"
-    directory: "/fault-quarantine-module"
+    directory: "/fault-quarantine"
     target-branch: "main"
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
 
   - package-ecosystem: "gomod"
-    directory: "/fault-remediation-module"
+    directory: "/fault-remediation"
     target-branch: "main"
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
 
   - package-ecosystem: "gomod"
-    directory: "/labeler-module"
+    directory: "/labeler"
     target-branch: "main"
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
 
   - package-ecosystem: "gomod"
-    directory: "/node-drainer-module"
+    directory: "/node-drainer"
     target-branch: "main"
     schedule:
       interval: "weekly"
@@ -112,7 +112,7 @@ updates:
     labels: ["dependencies"]
 
   - package-ecosystem: "pip"
-    directory: "/nvsentinel-log-collector"
+    directory: "/log-collector"
     target-branch: "main"
     schedule:
       interval: "weekly"

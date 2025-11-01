@@ -111,7 +111,7 @@ spec:
             - -config-file=/etc/prometheus-nginxlog-exporter/config.yml
           ports:
             - name: metrics
-              containerPort: {{ .Values.global.inclusterFileServer.metricsPort }}
+              containerPort: {{ .Values.metricsPort }}
           volumeMounts:
             - name: nginx-logs
               mountPath: /var/log/nginx
@@ -135,10 +135,10 @@ spec:
           imagePullPolicy: {{ .Values.cleanupMetrics.image.pullPolicy }}
           ports:
             - name: cleanup-metrics
-              containerPort: {{ .Values.global.inclusterFileServer.cleanupMetricsPort }}
+              containerPort: {{ .Values.cleanupMetricsPort }}
           env:
             - name: CLEANUP_METRICS_PORT
-              value: "{{ .Values.global.inclusterFileServer.cleanupMetricsPort }}"
+              value: "{{ .Values.cleanupMetricsPort }}"
             - name: LOG_RETENTION_DAYS
               value: "{{ .Values.logCleanup.retentionDays }}"
             - name: LOG_CLEANUP_SLEEP_INTERVAL

@@ -14,9 +14,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: node-drainer-config
+  name: {{ include "node-drainer.fullname" . }}
   labels:
-    {{- include "node-drainer-module.labels" . | nindent 4 }}
+    {{- include "node-drainer.labels" . | nindent 4 }}
 data:
   config.toml: |
     {{ .Values.config | nindent 6 }}

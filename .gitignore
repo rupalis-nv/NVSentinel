@@ -427,10 +427,10 @@ digests.txt
 images.json
 
 # Binary files
-fault-quarantine-module/fault-quarantine-module
-fault-remediation-module/fault-remediation-module
+fault-quarantine/fault-quarantine
+fault-remediation/fault-remediation
 health-events-analyzer/health-events-analyzer
 health-monitors/syslog-health-monitor/syslog-health-monitor
-labeler-module/labeler-module
-node-drainer-module/node-drainer-module
+labeler/labeler
+node-drainer/node-drainer
 platform-connectors/platform-connectors

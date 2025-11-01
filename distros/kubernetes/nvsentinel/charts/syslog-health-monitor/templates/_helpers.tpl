@@ -2,25 +2,14 @@
 Expand the name of the chart.
 */}}
 {{- define "syslog-health-monitor.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- .Chart.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-If release name contains chart name it will be used as a full name.
 */}}
 {{- define "syslog-health-monitor.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
-{{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
-{{- end }}
+{{- "syslog-health-monitor" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -51,17 +40,6 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Create the name of the service account to use
-*/}}
-{{- define "syslog-health-monitor.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "syslog-health-monitor.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
-
-{{/*
 DaemonSet template that can be customized for kata or regular mode.
 Usage: include "syslog-health-monitor.daemonset" (dict "root" . "kataMode" true)
 */}}
@@ -78,18 +56,16 @@ metadata:
     {{- include "syslog-health-monitor.labels" $root | nindent 4 }}
 spec:
   updateStrategy:
-    type: {{ $root.Values.updateStrategy }}
-    {{- if eq $root.Values.updateStrategy "RollingUpdate"}}
+    type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: {{ $root.Values.maxUnavailable }}
-    {{- end}}
+      maxUnavailable: 5%
   selector:
     matchLabels:
       {{- include "syslog-health-monitor.selectorLabels" $root | nindent 6 }}
       nvsentinel.dgxc.nvidia.com/kata: {{ $kataLabel | quote }}
   template:
     metadata:
-      {{- with ($root.Values.global.podAnnotations | default $root.Values.podAnnotations) }}
+      {{- with $root.Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -101,22 +77,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      securityContext:
-        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
       containers:
         - name: syslog-health-monitor
           securityContext:
-            {{- toYaml $root.Values.securityContext | nindent 12 }}
-          image: "{{ $root.Values.global.syslogHealthMonitor.image.repository }}:{{ $root.Values.global.image.tag | default $root.Chart.AppVersion }}"
-          imagePullPolicy: {{ $root.Values.global.image.pullPolicy }}
+            runAsUser: 0
+            capabilities:
+              add: ["SYSLOG", "SYS_ADMIN"]
+          image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag | default (($root.Values.global).image).tag | default $root.Chart.AppVersion }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           args:
             - "--polling-interval"
-            - "{{ $root.Values.pollingInterval }}"
+            - "15s"
             - "--metrics-port"
             - "{{ $root.Values.global.metricsPort }}"
             - "--kata-enabled"
             - {{ $kataLabel | quote }}
-            {{- if $root.Values.global.syslogHealthMonitor.xidSideCar.enabled }}
+            {{- if $root.Values.xidSideCar.enabled }}
             - "--xid-analyser-endpoint"
             - "http://localhost:8080"
             {{- end }}
@@ -177,10 +153,10 @@ spec:
             - name: sys-vol
               mountPath: /nvsentinel/sys
               readOnly: true
-        {{- if $root.Values.global.syslogHealthMonitor.xidSideCar.enabled }}
+        {{- if $root.Values.xidSideCar.enabled }}
         - name: xid-analyzer-sidecar
-          image: {{ $root.Values.global.syslogHealthMonitor.xidSideCar.image.repository }}:{{ $root.Values.global.syslogHealthMonitor.xidSideCar.image.tag }}
-          imagePullPolicy: {{ $root.Values.global.syslogHealthMonitor.xidSideCar.image.pullPolicy }}
+          image: {{ $root.Values.xidSideCar.image.repository }}:{{ $root.Values.xidSideCar.image.tag }}
+          imagePullPolicy: {{ $root.Values.xidSideCar.image.pullPolicy }}
           ports:
             - name: http-api
               containerPort: 8080

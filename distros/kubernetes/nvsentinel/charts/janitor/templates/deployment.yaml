@@ -44,8 +44,8 @@ spec:
       serviceAccountName: {{ include "janitor.serviceAccountName" . }}
       containers:
         - name: janitor
-          image: "{{ .Values.global.janitor.image.repository | default "ghcr.io/nvidia/nvsentinel/janitor" }}:{{ ((.Values.global).image).tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ ((.Values.global).janitor).image.pullPolicy | default "IfNotPresent" }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default ((.Values.global).image).tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "--metrics-bind-address=:{{ ((.Values.global).metricsPort) | default 2112 }}"
             - "--health-probe-bind-address=:8081"
@@ -140,7 +140,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "janitor.fullname" . }}-config
+            name: {{ include "janitor.fullname" . }}
         - name: webhook-certs
           secret:
             secretName: {{ include "janitor.fullname" . }}-webhook-cert

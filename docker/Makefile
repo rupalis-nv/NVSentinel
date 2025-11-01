@@ -26,7 +26,7 @@ PYTHON_MODULES := \
 	health-monitors/gpu-health-monitor
 
 CONTAINER_MODULES := \
-	nvsentinel-log-collector
+	log-collector
 
 ALL_MODULES := $(GO_MODULES) $(PYTHON_MODULES) $(CONTAINER_MODULES)
 
@@ -65,7 +65,7 @@ build-syslog-health-monitor:
 .PHONY: build-log-collector
 build-log-collector:
 	@echo "Building log collector..."
-	$(MAKE) -C ../nvsentinel-log-collector docker-build
+	$(MAKE) -C ../log-collector docker-build
 
 # =============================================================================
 # Publish Targets (CI/Production) - Delegates to individual module Makefiles
@@ -102,7 +102,7 @@ publish-syslog-health-monitor:
 .PHONY: publish-log-collector
 publish-log-collector:
 	@echo "Publishing log collector..."
-	$(MAKE) -C ../nvsentinel-log-collector docker-publish
+	$(MAKE) -C ../log-collector docker-publish
 
 # =============================================================================
 # Group Targets

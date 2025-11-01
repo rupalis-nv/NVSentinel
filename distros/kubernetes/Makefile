@@ -24,17 +24,10 @@ helm-publish:
 		$$SED_CMD -i.bak "s|appVersion: \"1.0.0\"|appVersion: \"$$SAFE_REF_NAME\"|" nvsentinel/Chart.yaml && \
 		echo "Updated global.image.tag to $$SAFE_REF_NAME in values.yaml"; \
 		echo "Updated appVersion to $$SAFE_REF_NAME in Chart.yaml"; \
-		if [ "$$HELM_REGISTRY_TYPE" = "oci" ]; then \
-			HELM_OCI_REPO_LOWER=$$(echo "$$HELM_OCI_REPOSITORY" | tr '[:upper:]' '[:lower:]'); \
-			echo "Publishing to OCI registry: $$HELM_OCI_REGISTRY/$$HELM_OCI_REPO_LOWER"; \
-			helm package nvsentinel --version $$SAFE_REF_NAME && \
-			helm push nvsentinel-$$SAFE_REF_NAME.tgz oci://$$HELM_OCI_REGISTRY/$$HELM_OCI_REPO_LOWER; \
-		else \
-			echo "Publishing to traditional registry: ngc"; \
-			helm repo add --force-update ngc https://helm.ngc.nvidia.com/nv-ngc-devops --username=$$NGC_USER_NAME --password=$$NGC_PASSWORD && \
-			helm package nvsentinel --version $$SAFE_REF_NAME && \
-			helm cm-push -f nvsentinel-$$SAFE_REF_NAME.tgz ngc; \
-		fi; \
+		HELM_OCI_REPO_LOWER=$$(echo "$$HELM_OCI_REPOSITORY" | tr '[:upper:]' '[:lower:]'); \
+		echo "Publishing to OCI registry: $$HELM_OCI_REGISTRY/$$HELM_OCI_REPO_LOWER"; \
+		helm package nvsentinel --version $$SAFE_REF_NAME && \
+		helm push nvsentinel-$$SAFE_REF_NAME.tgz oci://$$HELM_OCI_REGISTRY/$$HELM_OCI_REPO_LOWER; \
 	fi
 
 # All Kubernetes/Helm operations

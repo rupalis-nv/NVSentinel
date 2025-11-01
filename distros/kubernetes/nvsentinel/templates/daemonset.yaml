@@ -16,22 +16,20 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "nvsentinel.fullname" . }}-platform-connector
+  name: {{ include "nvsentinel.fullname" . }}
   labels:
     {{- include "nvsentinel.labels" . | nindent 4 }}
 spec:
   updateStrategy:
-    type: {{ .Values.platformConnector.updateStrategy }}
-    {{- if eq .Values.platformConnector.updateStrategy "RollingUpdate"}}
+    type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: {{ .Values.platformConnector.maxUnavailable }}
-    {{- end}}
+      maxUnavailable: 5%
   selector:
     matchLabels:
       {{- include "nvsentinel.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.global.podAnnotations }}
+      {{- with .Values.platformConnector.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -43,8 +41,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nvsentinel.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml .Values.platformConnector.podSecurityContext | nindent 8 }}
       containers:
         - name: platform-connector
           ports:
@@ -67,13 +63,16 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
           securityContext:
-            {{- toYaml .Values.platformConnector.securityContext | nindent 12 }}
-          image: "{{ .Values.platformConnector.image.repository }}:{{ .Values.global.image.tag | default .Chart.AppVersion }}"
+            runAsUser: 0
+            capabilities:
+              drop:
+              - ALL
+          image: "{{ .Values.platformConnector.image.repository }}:{{ .Values.platformConnector.image.tag | default .Values.global.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.platformConnector.image.pullPolicy }}
           args:
           - "--config=/etc/config/config.json"
           - "--metrics-port={{ .Values.global.metricsPort }}"
-          - "--mongo-client-cert-mount-path={{ .Values.platformConnector.mongodbStore.clientCertMountPath }}"
+          - "--mongo-client-cert-mount-path=/etc/ssl/mongo-client"
           - "--socket={{ .Values.socketPath }}"
           resources:
             {{- toYaml .Values.platformConnector.resources | nindent 12 }}
@@ -83,7 +82,7 @@ spec:
             - name: platform-connector-configmap
               mountPath: /etc/config/
             - name: mongo-app-client-cert
-              mountPath: {{ .Values.platformConnector.mongodbStore.clientCertMountPath }}
+              mountPath: /etc/ssl/mongo-client
               readOnly: true
           env: 
             - name: NODE_NAME
@@ -102,7 +101,7 @@ spec:
             type: DirectoryOrCreate
         - name: platform-connector-configmap
           configMap:
-            name: {{ include "nvsentinel.fullname" . }}-platform-connector-config
+            name: {{ include "nvsentinel.fullname" . }}
         - name: mongo-app-client-cert
           secret:
             secretName: mongo-app-client-cert-secret

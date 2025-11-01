@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/nvidia/nvsentinel/health-monitors/csp-health-monitor/pkg/model"
-	"github.com/nvidia/nvsentinel/store-client-sdk/pkg/storewatcher"
+	"github.com/nvidia/nvsentinel/store-client/pkg/storewatcher"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"

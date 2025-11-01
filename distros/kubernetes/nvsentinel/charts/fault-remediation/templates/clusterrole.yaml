@@ -14,9 +14,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "fault-remediation-module.fullname" . }}
+  name: {{ include "fault-remediation.fullname" . }}
   labels:
-    {{- include "fault-remediation-module.labels" . | nindent 4 }}
+    {{- include "fault-remediation.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - {{ .Values.maintenanceResource.apiGroup }}

@@ -14,14 +14,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "fault-quarantine-module.fullname" . }}
+  name: {{ include "fault-quarantine.fullname" . }}
   labels:
-    {{- include "fault-quarantine-module.labels" . | nindent 4 }}
+    {{- include "fault-quarantine.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "fault-quarantine-module.selectorLabels" . | nindent 6 }}
+      {{- include "fault-quarantine.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with ((.Values.global).podAnnotations | default .Values.podAnnotations) }}
@@ -29,17 +29,17 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "fault-quarantine-module.selectorLabels" . | nindent 8 }}
+        {{- include "fault-quarantine.selectorLabels" . | nindent 8 }}
     spec:
       {{- with ((.Values.global).imagePullSecrets | default .Values.imagePullSecrets) }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "fault-quarantine-module.serviceAccountName" . }}
+      serviceAccountName: {{ include "fault-quarantine.fullname" . }}
       containers:
         - name: fault-quarantine
-          image: "{{ ((.Values.global).faultQuarantineModule).image.repository | default "ghcr.io/nvidia/nvsentinel/fault-quarantine-module" }}:{{ ((.Values.global).image).tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ ((.Values.global).faultQuarantineModule).image.pullPolicy | default "IfNotPresent" }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default ((.Values.global).image).tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           args:
@@ -70,7 +70,7 @@ spec:
             mountPath: /etc/config/config.toml
             subPath: config.toml
           - name: mongo-app-client-cert
-            mountPath: {{ .Values.clientCertMountPath }}
+            mountPath: /etc/ssl/mongo-client
             readOnly: true
           env:
             - name: POD_NAMESPACE
@@ -80,11 +80,11 @@ spec:
             - name: LOG_LEVEL
               value: "{{ .Values.logLevel }}"
             - name: MONGODB_CLIENT_CERT_PATH
-              value: "{{ .Values.clientCertMountPath }}/tls.crt"
+              value: "/etc/ssl/mongo-client/tls.crt"
             - name: MONGODB_CLIENT_KEY_PATH
-              value: "{{ .Values.clientCertMountPath }}/tls.key"
+              value: "/etc/ssl/mongo-client/tls.key"
             - name: MONGODB_CA_CERT_PATH
-              value: "{{ .Values.clientCertMountPath }}/ca.crt"
+              value: "/etc/ssl/mongo-client/ca.crt"
           envFrom:
             - configMapRef:
                 name: mongodb-config
@@ -92,7 +92,7 @@ spec:
       volumes:
       - name: config-volume
         configMap:
-          name: fault-quarantine-config
+          name: {{ include "fault-quarantine.fullname" . }}
           items:
           - key: config.toml
             path: config.toml

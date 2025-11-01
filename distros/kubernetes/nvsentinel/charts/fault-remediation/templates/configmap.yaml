@@ -15,20 +15,12 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fault-remediation-config
+  name: {{ include "fault-remediation.fullname" . }}
   labels:
-    {{- include "fault-remediation-module.labels" . | nindent 4 }}
+    {{- include "fault-remediation.labels" . | nindent 4 }}
 data:
   config.toml: |
     {{ .Values.config | nindent 6 }}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fault-remediation-templates
-  labels:
-    {{- include "fault-remediation-module.labels" . | nindent 4 }}
-data:
   {{ .Values.maintenanceResource.template.fileName }}: |
     {{- .Files.Get "files/maintenance.yaml" | nindent 4 }}
   {{ if .Values.logCollector.enabled }}

@@ -101,14 +101,14 @@ nvsentinel/
 │   ├── syslog-health-monitor/   # Go - System log monitoring
 │   └── csp-health-monitor/      # Go - Cloud provider monitoring
 ├── platform-connectors/      # gRPC event ingestion service
-├── fault-quarantine-module/   # CEL-based event quarantine logic
-├── fault-remediation-module/   # Kubernetes controller for remediation
+├── fault-quarantine/   # CEL-based event quarantine logic
+├── fault-remediation/   # Kubernetes controller for remediation
 ├── health-events-analyzer/    # Event analysis and correlation
 ├── health-event-client/       # Event streaming client
-├── labeler-module/           # Node labeling controller
-├── node-drainer-module/      # Graceful workload eviction
-├── store-client-sdk/         # MongoDB interaction library (tested in CI)
-└── nvsentinel-log-collector/ # Log aggregation (shell scripts)
+├── labeler/           # Node labeling controller
+├── node-drainer/      # Graceful workload eviction
+├── store-client/         # MongoDB interaction library (tested in CI)
+└── log-collector/ # Log aggregation (shell scripts)
 ```
 
 ### Communication Flow
@@ -356,8 +356,8 @@ make -C health-monitors/gpu-health-monitor docker-build-dcgm3  # DCGM 3.x local
 make -C health-monitors/gpu-health-monitor docker-publish-dcgm4 # DCGM 4.x CI
 
 # Container-only module (shell + Python)
-make -C nvsentinel-log-collector docker-build-log-collector   # Local build
-make -C nvsentinel-log-collector docker-publish-log-collector # CI build
+make -C log-collector docker-build-log-collector   # Local build
+make -C log-collector docker-publish-log-collector # CI build
 ```
 
 #### Module-Level Docker Builds
@@ -379,8 +379,8 @@ make -C health-monitors/gpu-health-monitor docker-build-dcgm4  # DCGM 4.x local
 make -C health-monitors/gpu-health-monitor docker-publish     # Push both versions
 
 # Container-only module (shell + Python)
-make -C nvsentinel-log-collector docker-build                 # Both log-collector and file-server-cleanup
-make -C nvsentinel-log-collector docker-publish               # Push both components
+make -C log-collector docker-build                 # Both log-collector and file-server-cleanup
+make -C log-collector docker-publish               # Push both components
 
 # Legacy compatibility (all modules)
 make -C [module] image      # Calls docker-build
@@ -605,8 +605,8 @@ global:
 
 2. **Implement MongoDB Change Streams**
    ```go
-   // Use store-client-sdk for MongoDB operations
-   import "github.com/nvidia/nvsentinel/store-client-sdk/pkg/client"
+   // Use store-client for MongoDB operations
+   import "github.com/nvidia/nvsentinel/store-client/pkg/client"
    ```
 
 3. **Add Proper RBAC**
@@ -635,7 +635,7 @@ make go-lint-test-all                       # All Go modules (common.mk patterns
 # Test individual modules via delegation (main Makefile)
 make health-events-analyzer-lint-test       # Go module
 make platform-connectors-lint-test         # Go module
-make store-client-sdk-lint-test             # Go module
+make store-client-lint-test             # Go module
 make log-collector-lint-test                # Container module
 
 # Test individual modules directly (common.mk patterns)
@@ -749,7 +749,7 @@ make lint-test-all                              # Matches lint-test.yml workflow
 make -C health-monitors/syslog-health-monitor lint-test
 make -C health-monitors/gpu-health-monitor lint-test
 make -C platform-connectors lint-test           # Uses common.mk patterns
-make -C nvsentinel-log-collector lint-test      # Shell + Python linting
+make -C log-collector lint-test      # Shell + Python linting
 
 # Container builds (matches container-build-test.yml)
 make -C health-monitors/syslog-health-monitor docker-build
@@ -837,7 +837,7 @@ The CI environment uses:
    # Local shellcheck version may differ, causing different linting results
 
    # Use standardized linting (matches GitHub Actions):
-   make -C nvsentinel-log-collector lint-test    # Standardized pattern
+   make -C log-collector lint-test    # Standardized pattern
    make log-collector-lint                       # Main Makefile delegation
 
    # Install shellcheck locally to match CI:

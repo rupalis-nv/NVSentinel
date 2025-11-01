@@ -158,7 +158,7 @@ require (
 )
 
 // Local replacements for internal modules
-replace github.com/nvidia/nvsentinel/store-client-sdk => ../store-client-sdk
+replace github.com/nvidia/nvsentinel/store-client => ../store-client
 
 replace github.com/nvidia/nvsentinel/data-models => ../data-models
 

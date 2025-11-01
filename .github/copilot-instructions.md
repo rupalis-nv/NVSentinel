@@ -23,15 +23,15 @@ NVSentinel is a GPU Node Resilience System for Kubernetes that automatically det
 │   ├── csp-health-monitor/   # Cloud provider health checks (Go)
 │   └── syslog-health-monitor/ # System log analysis (Go)
 ├── health-events-analyzer/   # Event classification and routing
-├── fault-quarantine-module/  # Node isolation (cordon)
-├── node-drainer-module/      # Workload eviction
-├── fault-remediation-module/ # Break-fix automation
-├── labeler-module/           # Node labeling (DCGM version, driver status, Kata detection)
+├── fault-quarantine/  # Node isolation (cordon)
+├── node-drainer/      # Workload eviction
+├── fault-remediation/ # Break-fix automation
+├── labeler/           # Node labeling (DCGM version, driver status, Kata detection)
 ├── janitor/                  # State cleanup and maintenance
 ├── platform-connectors/      # CSP integration (GCP, AWS, Azure)
 ├── commons/                  # Shared utilities
 ├── data-models/             # Protocol Buffer definitions
-├── store-client-sdk/        # MongoDB client library
+├── store-client/        # MongoDB client library
 └── distros/kubernetes/      # Helm charts
 ```
 
@@ -86,7 +86,7 @@ NVSentinel is a GPU Node Resilience System for Kubernetes that automatically det
 make lint-test-all
 
 # Lint specific module
-cd labeler-module && make lint
+cd labeler && make lint
 
 # Test specific module
 cd health-events-analyzer && make test
@@ -112,7 +112,7 @@ tilt up  # Start local development environment
 
 ## Kata Containers Detection
 
-The labeler-module implements Kata Containers detection:
+The labeler implements Kata Containers detection:
 
 ### Detection Architecture
 - **Input labels** (on nodes): `katacontainers.io/kata-runtime` (default) + optional custom label
@@ -233,7 +233,7 @@ poetry update
 ```
 
 ### Adding New Node Labels
-1. Update labeler-module logic in `pkg/labeler/labeler.go`
+1. Update labeler logic in `pkg/labeler/labeler.go`
 2. Add tests in `labeler_test.go`
 3. Document in Helm chart values
 4. Update KATA_TESTING.md if kata-related

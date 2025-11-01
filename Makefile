@@ -43,12 +43,12 @@ GO_MODULES := \
 	health-monitors/csp-health-monitor \
 	platform-connectors \
 	health-events-analyzer \
-	fault-quarantine-module \
-	labeler-module \
-	node-drainer-module \
-	fault-remediation-module \
+	fault-quarantine \
+	labeler \
+	node-drainer \
+	fault-remediation \
 	janitor \
-	store-client-sdk \
+	store-client \
 	commons
 
 
@@ -58,22 +58,22 @@ PYTHON_MODULES := \
 
 # Container-only modules
 CONTAINER_MODULES := \
-	nvsentinel-log-collector
+	log-collector
 
 # Special modules requiring private repo access
 PRIVATE_MODULES := \
 	health-monitors/csp-health-monitor \
 	health-events-analyzer \
-	fault-quarantine-module \
-	labeler-module \
-	node-drainer-module \
-	fault-remediation-module \
+	fault-quarantine \
+	labeler \
+	node-drainer \
+	fault-remediation \
 	janitor
 
 # Modules requiring kubebuilder for tests
 KUBEBUILDER_MODULES := \
-	node-drainer-module \
-	fault-remediation-module
+	node-drainer \
+	fault-remediation
 
 # Default target
 .PHONY: all
@@ -400,35 +400,35 @@ lint-test-health-events-analyzer:
 	@echo "Linting and testing health-events-analyzer (using standardized Makefile)..."
 	$(MAKE) -C health-events-analyzer lint-test
 
-.PHONY: lint-test-fault-quarantine-module
-lint-test-fault-quarantine-module:
-	@echo "Linting and testing fault-quarantine-module (using standardized Makefile)..."
-	$(MAKE) -C fault-quarantine-module lint-test
+.PHONY: lint-test-fault-quarantine
+lint-test-fault-quarantine:
+	@echo "Linting and testing fault-quarantine (using standardized Makefile)..."
+	$(MAKE) -C fault-quarantine lint-test
 
-.PHONY: lint-test-labeler-module
-lint-test-labeler-module:
-	@echo "Linting and testing labeler-module (using standardized Makefile)..."
-	$(MAKE) -C labeler-module lint-test
+.PHONY: lint-test-labeler
+lint-test-labeler:
+	@echo "Linting and testing labeler (using standardized Makefile)..."
+	$(MAKE) -C labeler lint-test
 
-.PHONY: lint-test-node-drainer-module
-lint-test-node-drainer-module:
-	@echo "Linting and testing node-drainer-module (using standardized Makefile)..."
-	$(MAKE) -C node-drainer-module lint-test
+.PHONY: lint-test-node-drainer
+lint-test-node-drainer:
+	@echo "Linting and testing node-drainer (using standardized Makefile)..."
+	$(MAKE) -C node-drainer lint-test
 
-.PHONY: lint-test-fault-remediation-module
-lint-test-fault-remediation-module:
-	@echo "Linting and testing fault-remediation-module (using standardized Makefile)..."
-	$(MAKE) -C fault-remediation-module lint-test
+.PHONY: lint-test-fault-remediation
+lint-test-fault-remediation:
+	@echo "Linting and testing fault-remediation (using standardized Makefile)..."
+	$(MAKE) -C fault-remediation lint-test
 
 .PHONY: lint-test-janitor
 lint-test-janitor:
 	@echo "Linting and testing janitor (using standardized Makefile)..."
 	$(MAKE) -C janitor lint-test
 
-.PHONY: lint-test-store-client-sdk
-lint-test-store-client-sdk:
-	@echo "Linting and testing store-client-sdk..."
-	$(MAKE) -C store-client-sdk lint-test
+.PHONY: lint-test-store-client
+lint-test-store-client:
+	@echo "Linting and testing store-client..."
+	$(MAKE) -C store-client lint-test
 
 .PHONY: lint-test-commons
 lint-test-commons:
@@ -477,7 +477,7 @@ helm-lint:
 .PHONY: log-collector-lint
 log-collector-lint: ## Lint shell scripts in log collector
 	@echo "Linting log collector shell scripts..."
-	$(MAKE) -C nvsentinel-log-collector lint
+	$(MAKE) -C log-collector lint
 
 # Build targets (delegate to sub-Makefiles for better organization)
 .PHONY: build-all
@@ -596,21 +596,21 @@ docker-platform-connectors:
 docker-health-events-analyzer:
 	$(MAKE) -C docker build-health-events-analyzer
 
-.PHONY: docker-fault-quarantine-module
-docker-fault-quarantine-module:
-	$(MAKE) -C docker build-fault-quarantine-module
+.PHONY: docker-fault-quarantine
+docker-fault-quarantine:
+	$(MAKE) -C docker build-fault-quarantine
 
-.PHONY: docker-labeler-module
-docker-labeler-module:
-	$(MAKE) -C docker build-labeler-module
+.PHONY: docker-labeler
+docker-labeler:
+	$(MAKE) -C docker build-labeler
 
-.PHONY: docker-node-drainer-module
-docker-node-drainer-module:
-	$(MAKE) -C docker build-node-drainer-module
+.PHONY: docker-node-drainer
+docker-node-drainer:
+	$(MAKE) -C docker build-node-drainer
 
-.PHONY: docker-fault-remediation-module
-docker-fault-remediation-module:
-	$(MAKE) -C docker build-fault-remediation-module
+.PHONY: docker-fault-remediation
+docker-fault-remediation:
+	$(MAKE) -C docker build-fault-remediation
 
 .PHONY: docker-janitor
 docker-janitor:

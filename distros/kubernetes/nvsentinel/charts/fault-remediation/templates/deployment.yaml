@@ -14,14 +14,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "fault-remediation-module.fullname" . }}
+  name: {{ include "fault-remediation.fullname" . }}
   labels:
-    {{- include "fault-remediation-module.labels" . | nindent 4}}
+    {{- include "fault-remediation.labels" . | nindent 4}}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "fault-remediation-module.selectorLabels" . | nindent 6 }}
+      {{- include "fault-remediation.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with ((.Values.global).podAnnotations | default .Values.podAnnotations) }}
@@ -29,17 +29,17 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "fault-remediation-module.selectorLabels" . | nindent 8 }}
+        {{- include "fault-remediation.selectorLabels" . | nindent 8 }}
     spec:
       {{- with ((.Values.global).imagePullSecrets | default .Values.imagePullSecrets) }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "fault-remediation-module.serviceAccountName" . }}
+      serviceAccountName: {{ include "fault-remediation.fullname" . }}
       containers:
         - name: fault-remediation
-          image: "{{ ((.Values.global).faultRemediationModule).image.repository | default "ghcr.io/nvidia/nvsentinel/fault-remediation-module" }}:{{ ((.Values.global).image).tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ ((.Values.global).faultRemediationModule).image.pullPolicy | default "IfNotPresent" }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default ((.Values.global).image).tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           args:
@@ -66,13 +66,10 @@ spec:
             failureThreshold: 3
           volumeMounts:
           - name: mongo-app-client-cert
-            mountPath: {{ .Values.clientCertMountPath }}
+            mountPath: /etc/ssl/mongo-client
             readOnly: true
-          - name: templates
-            mountPath: {{ .Values.maintenanceResource.template.mountPath }}
           - name: config-volume
-            mountPath: /etc/config/config.toml
-            subPath: config.toml
+            mountPath: /etc/config
           env:
           - name: LOG_LEVEL
             value: "{{ .Values.logLevel }}"
@@ -83,11 +80,11 @@ spec:
           - name: ENABLE_AWS_SOS_COLLECTION
             value: "{{ .Values.logCollector.enableAwsSosCollection }}"
           - name: MONGODB_CLIENT_CERT_PATH
-            value: "{{ .Values.clientCertMountPath }}/tls.crt"
+            value: "/etc/ssl/mongo-client/tls.crt"
           - name: MONGODB_CLIENT_KEY_PATH
-            value: "{{ .Values.clientCertMountPath }}/tls.key"
+            value: "/etc/ssl/mongo-client/tls.key"
           - name: MONGODB_CA_CERT_PATH
-            value: "{{ .Values.clientCertMountPath }}/ca.crt"
+            value: "/etc/ssl/mongo-client/ca.crt"
           envFrom:
             - configMapRef:
                 name: mongodb-config
@@ -99,20 +96,7 @@ spec:
           optional: true
       - name: config-volume
         configMap:
-          name: fault-remediation-config
-          items:
-          - key: config.toml
-            path: config.toml
-      - name: templates
-        configMap:
-          name: fault-remediation-templates
-          items:
-            - key: {{ .Values.maintenanceResource.template.fileName }}
-              path: {{ .Values.maintenanceResource.template.fileName }}
-            {{- if .Values.logCollector.enabled }}
-            - key: {{ .Values.logCollector.manifestFileName }}
-              path: {{ .Values.logCollector.manifestFileName }}
-            {{- end }}
+          name: {{ include "fault-remediation.fullname" . }}
       restartPolicy: Always
       {{- with (((.Values.global).systemNodeSelector) | default .Values.nodeSelector) }}
       nodeSelector:

@@ -70,10 +70,10 @@ graph LR
 - `health-event-client`
 - `platform-connectors`
 - `health-events-analyzer`
-- `fault-quarantine-module`
-- `labeler-module`
-- `node-drainer-module`
-- `fault-remediation-module`
+- `fault-quarantine`
+- `labeler`
+- `node-drainer`
+- `fault-remediation`
 - `log-collector`
 - `file-server-cleanup`
 
@@ -114,7 +114,7 @@ helm install nvsentinel oci://ghcr.io/nvidia/nvsentinel --version v1.2.3
 
 **Container Images** published to `ghcr.io/nvidia/`:
 - All 13 components tagged with `v1.2.3`
-- Example: `fault-quarantine-module:v1.2.3`
+- Example: `fault-quarantine:v1.2.3`
 
 **Helm Chart**: `oci://ghcr.io/nvidia/nvsentinel:v1.2.3`
 

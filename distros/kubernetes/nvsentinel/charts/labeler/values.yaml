@@ -20,6 +20,13 @@ replicaCount: 1
 
 logLevel: info
 
+image:
+  repository: ghcr.io/nvidia/nvsentinel/labeler
+  pullPolicy: IfNotPresent
+  tag: ""
+
+podAnnotations: {}
+
 # Kata Containers detection configuration
 # Additional node label to check when detecting Kata Containers support. If specified, the labeler
 # will check BOTH this custom label AND the default 'katacontainers.io/kata-runtime' label as
@@ -28,22 +35,6 @@ logLevel: info
 # Example: 'custom.kata.label' or 'io.katacontainers.config.runtime.oci_runtime'
 # Note: The input label value must be truthy (case-insensitive): "true", "enabled", "1", or "yes"
 kataLabelOverride: ""
-
-image:
-  repository: ghcr.io/nvidia/nvsentinel/labeler-module
-  pullPolicy: IfNotPresent
-  tag: ""
-
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
-serviceAccount: 
-  create: true
-
-podSecurityContext: {}
-
-securityContext: {}
 
 resources:
   requests:

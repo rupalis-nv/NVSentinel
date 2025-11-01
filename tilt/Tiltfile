@@ -83,16 +83,16 @@ for i in range(num_kata_test_nodes):
 k8s_yaml('./nvidia-driver-daemonset.yaml')
 k8s_yaml('./nvidia-dcgm-daemonset.yaml')
 
-include('../fault-quarantine-module/Tiltfile')
-include('../fault-remediation-module/Tiltfile')
+include('../fault-quarantine/Tiltfile')
+include('../fault-remediation/Tiltfile')
 include('../janitor/Tiltfile')
-include('../node-drainer-module/Tiltfile')
+include('../node-drainer/Tiltfile')
 include('../platform-connectors/Tiltfile')
 include('./simple-health-client/Tiltfile')
 #include('../health-events-analyzer/Tiltfile') # This module was a proof-of-concept, never completed
 include('../health-monitors/gpu-health-monitor/Tiltfile')
 include('../health-monitors/syslog-health-monitor/Tiltfile')
-include('../labeler-module/Tiltfile')
+include('../labeler/Tiltfile')
 
 values_files = [
     '../distros/kubernetes/nvsentinel/values.yaml',
@@ -121,13 +121,13 @@ k8s_resource(
         'mongo-server-cert-0:certificate',
         'mongo-app-client-cert:certificate',
         'mongo-dgxcops-client-cert:certificate',
-        'nvsentinel-janitor-webhook-cert:certificate'
+        'janitor-webhook-cert:certificate'
     ],
     resource_deps=['cert-manager'],
 )
 k8s_resource(
     new_name='prometheus-resources',
-    objects=['nvsentinel-pod-monitor:podmonitor'],
+    objects=['nvsentinel:podmonitor'],
     resource_deps=['prometheus-operator'],
 )
 k8s_resource(
@@ -143,8 +143,8 @@ kwok_all_node_names = kwok_regular_node_names + kwok_kata_test_node_names
 k8s_resource(
     new_name='kwok-fake-nodes',
     objects=kwok_all_node_names,
-    resource_deps=['kwok', 'nvsentinel-platform-connector', 'nvsentinel-fault-quarantine', 'nvsentinel-fault-remediation', 
-        'nvsentinel-labeler', 'nvsentinel-node-drainer', 'nvsentinel-mongodb', 'simple-health-client'
+    resource_deps=['kwok', 'platform-connectors', 'fault-quarantine', 'fault-remediation', 
+        'labeler', 'node-drainer', 'mongodb', 'simple-health-client'
     ], 
 )
 k8s_resource(
@@ -153,6 +153,6 @@ k8s_resource(
     resource_deps=['kwok']
 )
 k8s_resource(
-    workload='nvsentinel-gpu-health-monitor-dcgm-3.x',
+    workload='gpu-health-monitor-dcgm-3.x',
     pod_readiness='ignore'
 )

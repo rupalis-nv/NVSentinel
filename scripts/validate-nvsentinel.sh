@@ -261,7 +261,7 @@ check_job() {
 
 # Check statefulsets
 echo "=== StatefulSets ==="
-check_statefulset "nvsentinel-mongodb" 3
+check_statefulset "mongodb" 3
 
 # Check jobs
 echo "=== Jobs ==="
@@ -269,19 +269,19 @@ check_job "create-mongodb-database"
 
 # Check deployments (application components)
 echo "=== Deployments ==="
-check_deployment "nvsentinel-fault-quarantine" 1
-check_deployment "nvsentinel-fault-remediation" 1
-check_deployment "nvsentinel-labeler" 1
-check_deployment "nvsentinel-node-drainer" 1
+check_deployment "fault-quarantine" 1
+check_deployment "fault-remediation" 1
+check_deployment "labeler" 1
+check_deployment "node-drainer" 1
 check_optional_deployment "simple-health-client" 1
 
 # Check daemonsets (system components that run on nodes)
 echo "=== DaemonSets ==="
-check_daemonset "nvsentinel-platform-connector"
-check_daemonset "nvsentinel-gpu-health-monitor-dcgm-3.x"
-check_daemonset "nvsentinel-gpu-health-monitor-dcgm-4.x"
-check_daemonset "nvsentinel-syslog-health-monitor-regular"
-check_daemonset "nvsentinel-syslog-health-monitor-kata"
+check_daemonset "platform-connector"
+check_daemonset "gpu-health-monitor-dcgm-3.x"
+check_daemonset "gpu-health-monitor-dcgm-4.x"
+check_daemonset "syslog-health-monitor-regular"
+check_daemonset "syslog-health-monitor-kata"
 
 # Pod health
 echo "=== Pod Health ==="
@@ -314,7 +314,7 @@ fi
 
 # Services
 echo "=== Services ==="
-services=("nvsentinel-mongodb-headless" "simple-health-client")
+services=("mongodb-headless" "simple-health-client")
 for svc in "${services[@]}"; do
     if kubectl get service "$svc" -n "$NAMESPACE" >/dev/null 2>&1; then
         endpoints=$(kubectl get endpoints "$svc" -n "$NAMESPACE" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null | wc -w || echo "0")

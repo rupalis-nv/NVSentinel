@@ -14,10 +14,10 @@
 
 replicaCount: 1
 
-nameOverride: ""
-fullnameOverride: ""
-
-podSecurityContext: {}
+image:
+  repository: ghcr.io/nvidia/nvsentinel/csp-health-monitor
+  pullPolicy: IfNotPresent
+  tag: ""
 
 resources:
   limits:
@@ -38,33 +38,16 @@ quarantineTriggerEngine:
       memory: "128Mi"
   # Log verbosity for the sidecar, defaults to main container's logLevel if not set
   logLevel: info
-  # Port for sidecar's Prometheus metrics endpoint
-  metricsPort: 2113
-
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
 
 # Scheduling configuration
 nodeSelector: {}
 affinity: {}
 tolerations: []
 
-# Optional image pull secrets (fallback if global not available)
-imagePullSecrets: []
-
-# Optional pod annotations (fallback if global not available)
 podAnnotations: {}
 
 # Log verbosity level for the main CSP health monitor container (e.g. "debug", "info", "warn", "error")
 logLevel: info
-
-# Mount path for MongoDB client certificates within the containers
-clientCertMountPath: "/etc/ssl/mongo-client"
-
-# Path to the UDS socket created by the Platform Connector DaemonSet
-udsPath: "/run/nvsentinel/nvsentinel.sock"
 
 # cspName specifies the active cloud service provider. Can be "gcp" or "aws".
 cspName: ""

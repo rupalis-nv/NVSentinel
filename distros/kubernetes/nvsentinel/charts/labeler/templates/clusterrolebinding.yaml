@@ -20,7 +20,7 @@ metadata:
     {{- include "labeler.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "labeler.serviceAccountName" . }}
+    name: {{ include "labeler.fullname" . }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole

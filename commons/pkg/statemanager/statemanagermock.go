@@ -19,7 +19,7 @@ import (
 )
 
 // MockStateManager provides an implementation of the StateManager interface. This mock implementation is leverage by
-// unit tests in both the node-drainer-module and fault-remediation-module.
+// unit tests in both the node-drainer and fault-remediation.
 type MockStateManager struct {
 	UpdateNVSentinelStateNodeLabelFn func(ctx context.Context, nodeName string,
 		newStateLabelValue NVSentinelStateLabelValue, removeStateLabel bool) (bool, error)

@@ -19,8 +19,8 @@ env: [CGO_ENABLED=0]
 
 builds:
 
-  - id: fault-quarantine-module
-    dir: fault-quarantine-module
+  - id: fault-quarantine
+    dir: fault-quarantine
     main: .
     ldflags:
       - "-s -w"
@@ -36,8 +36,8 @@ builds:
       org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
       org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
-  - id: fault-remediation-module
-    dir: fault-remediation-module
+  - id: fault-remediation
+    dir: fault-remediation
     main: .
     ldflags:
       - "-s -w"
@@ -104,8 +104,8 @@ builds:
       org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
       org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
-  - id: labeler-module
-    dir: labeler-module
+  - id: labeler
+    dir: labeler
     main: .
     ldflags:
       - "-s -w"
@@ -121,8 +121,8 @@ builds:
       org.opencontainers.image.revision: "{{.Env.GIT_COMMIT}}"
       org.opencontainers.image.created: "{{.Env.BUILD_DATE}}"
 
-  - id: node-drainer-module
-    dir: node-drainer-module
+  - id: node-drainer
+    dir: node-drainer
     main: .
     ldflags:
       - "-s -w"

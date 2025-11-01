@@ -44,16 +44,16 @@ out="versions.txt"
 # Define array of dynamic images with their respective tags (sorted!)
 declare -a dynamic_images=(
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/csp-health-monitor:${SAFE_REF_NAME}"
-  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/fault-quarantine-module:${SAFE_REF_NAME}"
-  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/fault-remediation-module:${SAFE_REF_NAME}"
+  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/fault-quarantine:${SAFE_REF_NAME}"
+  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/fault-remediation:${SAFE_REF_NAME}"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/file-server-cleanup:${SAFE_REF_NAME}"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/gpu-health-monitor:${SAFE_REF_NAME}-dcgm-3.x"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/gpu-health-monitor:${SAFE_REF_NAME}-dcgm-4.x"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/health-events-analyzer:${SAFE_REF_NAME}"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/janitor:${SAFE_REF_NAME}"
-  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/labeler-module:${SAFE_REF_NAME}"
+  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/labeler:${SAFE_REF_NAME}"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/log-collector:${SAFE_REF_NAME}"
-  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/node-drainer-module:${SAFE_REF_NAME}"
+  "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/node-drainer:${SAFE_REF_NAME}"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/platform-connectors:${SAFE_REF_NAME}"
   "${CONTAINER_REGISTRY}/${CONTAINER_ORG}/nvsentinel/syslog-health-monitor:${SAFE_REF_NAME}"
 )
@@ -67,7 +67,7 @@ done
 # Create associative array to track seen image names (without registry/org)
 declare -A seen
 for img in "${dynamic_images[@]}"; do
-  # Extract just the image name (e.g., nvsentinel-platform-connectors)
+  # Extract just the image name (e.g., platform-connectors)
   repo="${img%%:*}"  # Remove tag
   image_name="${repo##*/}"  # Remove registry/org prefix
   seen["$image_name"]=1

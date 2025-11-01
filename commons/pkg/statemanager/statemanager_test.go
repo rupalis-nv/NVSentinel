@@ -225,7 +225,7 @@ func TestStateTransitionValidProgression(t *testing.T) {
 		{"Quarantined to DrainSucceeded", string(QuarantinedLabelValue), DrainSucceededLabelValue, true, true},
 		{"Quarantined to Remediating", string(QuarantinedLabelValue), RemediatingLabelValue, true, true},
 		{"Draining to Remediating", string(DrainingLabelValue), RemediatingLabelValue, true, true},
-		// DrainFailed is a terminal state - fault-remediation-module only consumes drain-succeeded
+		// DrainFailed is a terminal state - fault-remediation only consumes drain-succeeded
 		{"DrainFailed to Remediating", string(DrainFailedLabelValue), RemediatingLabelValue, true, true},
 		{"DrainSucceeded to DrainFailed", string(DrainSucceededLabelValue), DrainFailedLabelValue, true, true},
 		{"RemediationSucceeded to Draining", string(RemediationSucceededLabelValue), DrainingLabelValue, true, true},

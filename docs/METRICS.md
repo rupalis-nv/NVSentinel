@@ -4,8 +4,8 @@ This document outlines all Prometheus metrics exposed by NVSentinel components.
 
 ## Table of Contents
 
-- [Fault Quarantine Module](#fault-quarantine-module)
-- [Labeler Module](#labeler-module)
+- [Fault Quarantine Module](#fault-quarantine)
+- [Labeler Module](#labeler)
 - [Janitor](#janitor)
 - [Platform Connectors](#platform-connectors)
 - [Health Monitors](#health-monitors)

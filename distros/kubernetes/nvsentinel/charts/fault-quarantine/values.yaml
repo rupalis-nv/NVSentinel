@@ -14,10 +14,10 @@
 
 replicaCount: 1
 
-nameOverride: ""
-fullnameOverride: ""
-
-podSecurityContext: {}
+image:
+  repository: ghcr.io/nvidia/nvsentinel/fault-quarantine
+  pullPolicy: IfNotPresent
+  tag: ""
 
 resources: 
   limits:
@@ -27,26 +27,15 @@ resources:
     cpu: "1"
     memory: "1Gi"
 
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
-
 # Scheduling configuration
 nodeSelector: {}
 affinity: {}
 tolerations: []
 
-# Optional image pull secrets (fallback if global not available)
-imagePullSecrets: []
-
-# Optional pod annotations (fallback if global not available)
 podAnnotations: {}
 
 # Log level for the fault quarantine module (e.g. "debug", "info", "warn", "error")
 logLevel: info
-
-clientCertMountPath: "/etc/ssl/mongo-client"
 
 circuitBreaker:
   enabled: true

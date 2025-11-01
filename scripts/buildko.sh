@@ -40,31 +40,31 @@ fi
 if [ ! -f go.work ]; then
   go work init
   go work use \
-    ./fault-quarantine-module \
-    ./fault-remediation-module \
+    ./fault-quarantine \
+    ./fault-remediation \
     ./health-events-analyzer \
     ./health-monitors/csp-health-monitor \
     ./janitor \
-    ./labeler-module \
-    ./node-drainer-module \
+    ./labeler \
+    ./node-drainer \
     ./platform-connectors
 fi
 
 ko build "${KO_FLAGS[@]}" \
-  ./fault-quarantine-module \
-  ./fault-remediation-module \
+  ./fault-quarantine \
+  ./fault-remediation \
   ./health-events-analyzer \
   ./health-monitors/csp-health-monitor/cmd/csp-health-monitor \
   ./health-monitors/csp-health-monitor/cmd/maintenance-notifier \
   ./janitor \
-  ./labeler-module \
-  ./node-drainer-module \
+  ./labeler \
+  ./node-drainer \
   ./platform-connectors 
 
 echo "built refs:"
 cat digests.txt
 
-# digests.txt has: ghcr.io/nvidia/nvsentinel/fault-quarantine-module:v0.1.0@sha256:9168...
+# digests.txt has: ghcr.io/nvidia/nvsentinel/fault-quarantine:v0.1.0@sha256:9168...
 # for attestation matrix we need subject-name WITHOUT tag, and the digest.
 jq -R -s '
   split("\n")

@@ -62,11 +62,11 @@ jobs:
             make_command: 'make gomod-lint'
             step_name: 'Run gomod lint'
           - component: log-collector
-            make_command: 'make -C nvsentinel-log-collector lint-log-collector'
+            make_command: 'make -C log-collector lint-log-collector'
             step_name: 'Run lint'
             replace_imports: 'false'
           - component: file-server-cleanup
-            make_command: 'make -C nvsentinel-log-collector lint-file-server-cleanup'
+            make_command: 'make -C log-collector lint-file-server-cleanup'
             step_name: 'Run lint'
             replace_imports: 'false'
           - component: kubernetes-distro
@@ -132,13 +132,13 @@ jobs:
       matrix:
         component:
           - platform-connectors
-          - store-client-sdk
+          - store-client
           - commons
           - health-events-analyzer
-          - fault-quarantine-module
-          - labeler-module
-          - node-drainer-module
-          - fault-remediation-module
+          - fault-quarantine
+          - labeler
+          - node-drainer
+          - fault-remediation
           - janitor
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0

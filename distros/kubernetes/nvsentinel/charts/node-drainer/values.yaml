@@ -16,10 +16,12 @@ replicaCount: 1
 
 logLevel: info
 
-nameOverride: ""
-fullnameOverride: ""
+image:
+  repository: ghcr.io/nvidia/nvsentinel/node-drainer
+  pullPolicy: IfNotPresent
+  tag: ""
 
-podSecurityContext: {}
+podAnnotations: {}
 
 resources:
   limits:
@@ -28,19 +30,6 @@ resources:
   requests:
     cpu: "200m"
     memory: "300Mi"
-
-image:
-  repository: nodedrainer
-  tag: main
-
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
-
-clientCertMountPath: "/etc/ssl/mongo-client"
-
-configPath: "/etc/config/config.toml"
 
 config: |
   evictionTimeoutInSeconds = "60"

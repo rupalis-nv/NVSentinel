@@ -37,7 +37,7 @@ NVSentinel provides supply chain security artifacts for all container images:
 Export variables for the image you want to verify, for example:
 
 ```shell
-export IMAGE="ghcr.io/nvidia/nvsentinel/fault-quarantine-module"
+export IMAGE="ghcr.io/nvidia/nvsentinel/fault-quarantine"
 export DIGEST="sha256:4558fc8a81f26e9dffa513c253de45ffaaca0b41e0bdd7842938778b63c66e1d"
 export IMAGE_DIGEST="$IMAGE@$DIGEST"
 export IMAGE_SBOM="$IMAGE:sha256-$(echo "$DIGEST" | cut -d: -f2).sbom"

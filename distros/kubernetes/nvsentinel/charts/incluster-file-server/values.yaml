@@ -21,6 +21,10 @@ initImage:
   tag: "1.37.0"
   pullPolicy: IfNotPresent
 
+# Metrics ports configuration
+metricsPort: 9001
+cleanupMetricsPort: 9002
+
 service:
   type: ClusterIP
   port: 80

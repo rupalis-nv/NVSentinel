@@ -17,7 +17,7 @@ kind: ConfigMap
 metadata:
   name: mongodb-config
 data:
-  MONGODB_URI: {{ $uri := "" }}{{ if .Values.mongodb.configMapValues }}{{ $uri = .Values.mongodb.configMapValues.mongodbUri }}{{ end }}{{ default (printf "mongodb://%s-mongodb-headless.%s.svc.cluster.local:27017/?replicaSet=rs0&tls=true" .Release.Name .Release.Namespace) $uri | quote }}
+  MONGODB_URI: {{ printf "mongodb://mongodb-headless.%s.svc.cluster.local:27017/?replicaSet=rs0&tls=true" .Release.Namespace }}
   MONGODB_DATABASE_NAME: "HealthEventsDatabase"
   MONGODB_COLLECTION_NAME: "HealthEvents"
   MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME: "MaintenanceEvents"

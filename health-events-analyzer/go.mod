@@ -7,7 +7,7 @@ toolchain go1.25.3
 require (
 	github.com/nvidia/nvsentinel/commons v0.0.0
 	github.com/nvidia/nvsentinel/data-models v0.0.0
-	github.com/nvidia/nvsentinel/store-client-sdk v0.0.0
+	github.com/nvidia/nvsentinel/store-client v0.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver v1.17.4
@@ -52,7 +52,7 @@ require (
 )
 
 // Local replacements for internal modules
-replace github.com/nvidia/nvsentinel/store-client-sdk => ../store-client-sdk
+replace github.com/nvidia/nvsentinel/store-client => ../store-client
 
 replace github.com/nvidia/nvsentinel/data-models => ../data-models
 

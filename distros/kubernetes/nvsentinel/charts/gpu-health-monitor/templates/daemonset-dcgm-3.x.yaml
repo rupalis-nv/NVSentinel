@@ -19,17 +19,15 @@ metadata:
     {{- include "gpu-health-monitor.labels" . | nindent 4 }}
 spec:
   updateStrategy:
-    type: {{ .Values.updateStrategy }}
-    {{- if eq .Values.updateStrategy "RollingUpdate"}}
+    type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: {{ .Values.maxUnavailable }}
-    {{- end}}
+      maxUnavailable: 5%
   selector:
     matchLabels:
       {{- include "gpu-health-monitor.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with (.Values.global.podAnnotations | default .Values.podAnnotations) }}
+      {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -40,8 +38,6 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Chart.Name }}
           command: ["gpu_health_monitor"]
@@ -51,19 +47,19 @@ spec:
             - --dcgm-error-mapping-config-file
             - "/etc/dcgmhealth/dcgmerrorsmapping.csv"
             - --dcgm-addr
-            - {{ ternary  (printf "%s:%v" .Values.global.dcgm.service.endpoint .Values.global.dcgm.service.port) "localhost:5555" .Values.global.dcgm.dcgmK8sServiceEnabled | quote }}
+            - {{ ternary  (printf "%s:%v" .Values.dcgm.service.endpoint .Values.dcgm.service.port) "localhost:5555" .Values.dcgm.dcgmK8sServiceEnabled | quote }}
             - --port
             - "{{ .Values.global.metricsPort }}"
             - --verbose
             - "False"
             - --state-file
-            - {{ .Values.stateFilePath }}
+            - "/var/run/statefile"
             - --dcgm-k8s-service-enabled
-            - {{ .Values.global.dcgm.dcgmK8sServiceEnabled | quote }}
+            - {{ .Values.dcgm.dcgmK8sServiceEnabled | quote }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.global.gpuHealthMonitor.image.repository }}:{{ .Values.global.image.tag | default .Chart.AppVersion }}-dcgm-3.x"
-          imagePullPolicy: {{ .Values.global.gpuHealthMonitor.image.pullPolicy }}
+            runAsUser: 0
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default ((.Values.global).image).tag | default .Chart.AppVersion }}-dcgm-3.x"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           ports:
@@ -86,8 +82,8 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
           volumeMounts:
-            {{- if .Values.global.gpuHealthMonitorAdditionalVolumeMounts }}
-            {{ toYaml .Values.global.gpuHealthMonitorAdditionalVolumeMounts | nindent 12 }}
+            {{- if .Values.additionalVolumeMounts }}
+            {{ toYaml .Values.additionalVolumeMounts | nindent 12 }}
             {{- end }}
             - name: config-vol
               mountPath: /etc/dcgmhealth
@@ -108,10 +104,10 @@ spec:
           hostPath:
             path: /var/run/nvsentinel
             type: Directory
-        {{- if .Values.global.gpuHealthMonitorAdditionalHostVolumes }}
-        {{ toYaml .Values.global.gpuHealthMonitorAdditionalHostVolumes | nindent 8 }}
+        {{- if .Values.additionalHostVolumes }}
+        {{ toYaml .Values.additionalHostVolumes | nindent 8 }}
         {{- end }}
-      {{- if .Values.global.gpuHealthMonitor.useHostNetworking }}
+      {{- if .Values.useHostNetworking }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}

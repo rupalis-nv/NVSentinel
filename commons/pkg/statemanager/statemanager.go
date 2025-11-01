@@ -45,7 +45,7 @@
 //	      │         │
 //	      │         │ Start remediation
 //	      │         ▼
-//	      │  ┌──────────────┐    Note: fault-remediation-module
+//	      │  ┌──────────────┐    Note: fault-remediation
 //	      │  │ remediating  │    only consumes drain-succeeded.
 //	      │  └──────┬───────┘    drain-failed is a terminal state.
 //	      │         │
@@ -76,17 +76,17 @@
 // Expected transitions (no validation error):
 //
 //	Entry:
-//	  none → quarantined           (fault-quarantine-module detects fault)
+//	  none → quarantined           (fault-quarantine detects fault)
 //
 //	Drain Phase:
-//	  quarantined → draining       (node-drainer-module starts drain)
-//	  draining → drain-succeeded   (node-drainer-module: drain completed)
-//	  draining → drain-failed      (node-drainer-module: drain failed)
+//	  quarantined → draining       (node-drainer starts drain)
+//	  draining → drain-succeeded   (node-drainer: drain completed)
+//	  draining → drain-failed      (node-drainer: drain failed)
 //
 //	Remediation Phase:
-//	  drain-succeeded → remediating              (fault-remediation-module starts remediation)
-//	  remediating → remediation-succeeded        (fault-remediation-module: success)
-//	  remediating → remediation-failed           (fault-remediation-module: failure)
+//	  drain-succeeded → remediating              (fault-remediation starts remediation)
+//	  remediating → remediation-succeeded        (fault-remediation: success)
+//	  remediating → remediation-failed           (fault-remediation: failure)
 //
 //	Label Removal (from ANY state):
 //	  * → (no label)               (removeStateLabel=true - supports canceled drains)
@@ -159,23 +159,23 @@ const (
 type NVSentinelStateLabelValue string
 
 const (
-	// Label values applied by the fault-quarantine-module:
+	// Label values applied by the fault-quarantine:
 	QuarantinedLabelValue NVSentinelStateLabelValue = "quarantined"
 
-	// Label values applied by the node-drainer-module:
+	// Label values applied by the node-drainer:
 	DrainingLabelValue       NVSentinelStateLabelValue = "draining"
 	DrainSucceededLabelValue NVSentinelStateLabelValue = "drain-succeeded"
 	DrainFailedLabelValue    NVSentinelStateLabelValue = "drain-failed"
 
-	// Label values applied by the fault-remediation-module:
+	// Label values applied by the fault-remediation:
 	RemediatingLabelValue          NVSentinelStateLabelValue = "remediating"
 	RemediationSucceededLabelValue NVSentinelStateLabelValue = "remediation-succeeded"
 	RemediationFailedLabelValue    NVSentinelStateLabelValue = "remediation-failed"
 )
 
 /*
-The StateManager interface is leveraged by both the node-drainer-module and the fault-remediation-module to manage the
-lifecycle of the dgxc.nvidia.com/nvsentinel-state node label. Note that the fault-quarantine-module relies on its
+The StateManager interface is leveraged by both the node-drainer and the fault-remediation to manage the
+lifecycle of the dgxc.nvidia.com/nvsentinel-state node label. Note that the fault-quarantine relies on its
 existing node object update calls to add and remove this label.
 
 Example label sequences:
@@ -188,7 +188,7 @@ Example label sequences:
  4. Canceled drain: quarantined → draining → (label removed via healthy event)
 
 Terminal states (drain-failed, remediation-failed, remediation-succeeded) have no valid forward transitions.
-The fault-remediation-module only consumes drain-succeeded; drain-failed nodes are not remediated.
+The fault-remediation only consumes drain-succeeded; drain-failed nodes are not remediated.
 
 State transition validation: UpdateNVSentinelStateNodeLabel validates state transitions for observability (emits
 metrics/errors for unexpected transitions) but does NOT validate when removing labels (removeStateLabel=true). This
@@ -314,7 +314,7 @@ func validateStateTransition(nodeName, currentValue string, exists bool, targetS
 		QuarantinedLabelValue:          {DrainingLabelValue},
 		DrainingLabelValue:             {DrainSucceededLabelValue, DrainFailedLabelValue},
 		DrainSucceededLabelValue:       {RemediatingLabelValue},
-		DrainFailedLabelValue:          {}, // Terminal state - fault-remediation-module doesn't consume drain-failed
+		DrainFailedLabelValue:          {}, // Terminal state - fault-remediation doesn't consume drain-failed
 		RemediatingLabelValue:          {RemediationSucceededLabelValue, RemediationFailedLabelValue},
 		RemediationSucceededLabelValue: {}, // Terminal state
 		RemediationFailedLabelValue:    {}, // Terminal state

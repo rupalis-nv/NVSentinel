@@ -57,13 +57,13 @@ REPO_NAME="${REPO_NAME:-nvsentinel}"
 
 # Image lists
 KO_IMAGES=(
-    "nvsentinel/fault-quarantine-module"
-    "nvsentinel/fault-remediation-module"
+    "nvsentinel/fault-quarantine"
+    "nvsentinel/fault-remediation"
     "nvsentinel/health-events-analyzer"
     "nvsentinel/csp-health-monitor"
     "nvsentinel/maintenance-notifier"
-    "nvsentinel/labeler-module"
-    "nvsentinel/node-drainer-module"
+    "nvsentinel/labeler"
+    "nvsentinel/node-drainer"
     "nvsentinel/janitor"
     "nvsentinel/platform-connectors"
 )

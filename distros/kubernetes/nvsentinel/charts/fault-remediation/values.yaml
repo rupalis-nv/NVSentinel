@@ -17,10 +17,10 @@ replicaCount: 1
 
 logLevel: info
 
-nameOverride: ""
-fullnameOverride: ""
-
-podSecurityContext: {}
+image:
+  repository: ghcr.io/nvidia/nvsentinel/fault-remediation
+  pullPolicy: IfNotPresent
+  tag: ""
 
 resources: 
   limits:
@@ -30,30 +30,15 @@ resources:
     cpu: "200m"
     memory: "300Mi"
 
-image:
-  repository: faultremediation
-  tag: "v1"
-
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
-
 # Scheduling configuration
 nodeSelector: {}
 affinity: {}
 
-# Optional image pull secrets (fallback if global not available)
-imagePullSecrets: []
-
-# Optional pod annotations (fallback if global not available)
 podAnnotations: {}
 
 # Special tolerations for fault remediation - allow running on nodes with any taints for log collection
 tolerations:
   - operator: "Exists"
-
-clientCertMountPath: "/etc/ssl/mongo-client"
 
 config: |
   [maintenanceResource]
@@ -62,7 +47,7 @@ config: |
   apiGroup = "janitor.dgxc.nvidia.com"
   
   [template]
-  mountPath = "/etc/fault-remediation/templates"
+  mountPath = "/etc/config"
   fileName = "maintenance-template.yaml"
   
   [updateRetry]

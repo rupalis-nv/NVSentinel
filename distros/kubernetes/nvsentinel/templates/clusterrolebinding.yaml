@@ -22,7 +22,7 @@ roleRef:
   kind: ClusterRole
   name: {{ include "nvsentinel.fullname" . }}
 subjects:
-- kind: ServiceAccount
-  name: {{ include "nvsentinel.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ include "nvsentinel.fullname" . }}
+    namespace: {{ .Release.Namespace }}
 

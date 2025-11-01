@@ -85,7 +85,7 @@ CR Status Checking:
 
 Configuration:
 ```toml
-[fault-remediation-module]
+[fault-remediation]
 namespace = "nvsentinel-system"
 apiGroup = "janitor.dgxc.nvidia.com"
 version = "v1alpha1"

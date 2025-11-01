@@ -14,32 +14,32 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "node-drainer-module.fullname" . }}
+  name: {{ include "node-drainer.fullname" . }}
   labels:
-    {{- include "node-drainer-module.labels" . | nindent 4}}
+    {{- include "node-drainer.labels" . | nindent 4}}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "node-drainer-module.selectorLabels" . | nindent 6 }}
+      {{- include "node-drainer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with (.Values.global.podAnnotations | default .Values.podAnnotations) }}
+      {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "node-drainer-module.selectorLabels" . | nindent 8 }}
+        {{- include "node-drainer.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "node-drainer-module.serviceAccountName" . }}
+      serviceAccountName: {{ include "node-drainer.fullname" . }}
       containers:
         - name: node-drainer
-          image: "{{ .Values.global.nodeDrainerModule.image.repository }}:{{ .Values.global.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.global.nodeDrainerModule.image.pullPolicy }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default ((.Values.global).image).tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           ports:
@@ -63,24 +63,24 @@ spec:
             failureThreshold: 3
           args:
           - "--metrics-port={{ .Values.global.metricsPort }}"
-          - "--config-path={{ .Values.configPath }}"
+          - "--config-path=/etc/config/config.toml"
           - "--dry-run={{ .Values.global.dryRun }}"
           volumeMounts:
           - name: config-volume
             mountPath: /etc/config/config.toml
             subPath: config.toml
           - name: mongo-app-client-cert
-            mountPath: {{ .Values.clientCertMountPath }}
+            mountPath: /etc/ssl/mongo-client
             readOnly: true
           env:
             - name: LOG_LEVEL
               value: "{{ .Values.logLevel }}"
             - name: MONGODB_CLIENT_CERT_PATH
-              value: "{{ .Values.clientCertMountPath }}/tls.crt"
+              value: "/etc/ssl/mongo-client/tls.crt"
             - name: MONGODB_CLIENT_KEY_PATH
-              value: "{{ .Values.clientCertMountPath }}/tls.key"
+              value: "/etc/ssl/mongo-client/tls.key"
             - name: MONGODB_CA_CERT_PATH
-              value: "{{ .Values.clientCertMountPath }}/ca.crt"
+              value: "/etc/ssl/mongo-client/ca.crt"
           envFrom:
             - configMapRef:
                 name: mongodb-config
@@ -88,7 +88,7 @@ spec:
       volumes:
       - name: config-volume
         configMap:
-          name: node-drainer-config
+          name: {{ include "node-drainer.fullname" . }}
           items:
           - key: config.toml
             path: config.toml

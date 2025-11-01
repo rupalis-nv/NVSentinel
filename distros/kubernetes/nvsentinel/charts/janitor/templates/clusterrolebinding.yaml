@@ -22,7 +22,7 @@ roleRef:
   kind: ClusterRole
   name: {{ include "janitor.fullname" . }}
 subjects:
-- kind: ServiceAccount
-  name: {{ include "janitor.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ include "janitor.fullname" . }}
+    namespace: {{ .Release.Namespace }}
 
