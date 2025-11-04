@@ -103,15 +103,20 @@ func (r *Reconciler) Start(ctx context.Context) error {
 // processEvent handles a single event from the watcher
 func (r *Reconciler) processEvent(ctx context.Context, event bson.M, watcher WatcherInterface,
 	collection MongoInterface) {
+	start := time.Now()
+	defer func() {
+		eventHandlingDuration.Observe(time.Since(start).Seconds())
+	}()
+
 	totalEventsReceived.Inc()
 
 	healthEventWithStatus := HealthEventDoc{}
 	if err := storewatcher.UnmarshalFullDocumentFromEvent(event, &healthEventWithStatus); err != nil {
-		totalEventProcessingError.WithLabelValues("unmarshal_doc_error", "unknown").Inc()
+		processingErrors.WithLabelValues("unmarshal_doc_error", "unknown").Inc()
 		slog.Error("Failed to unmarshal event", "error", err)
 
 		if err := watcher.MarkProcessed(context.Background()); err != nil {
-			totalEventProcessingError.WithLabelValues("mark_processed_error", "unknown").Inc()
+			processingErrors.WithLabelValues("mark_processed_error", "unknown").Inc()
 			slog.Error("Error updating resume token", "error", err)
 		}
 
@@ -161,7 +166,7 @@ func (r *Reconciler) shouldSkipEvent(ctx context.Context,
 		slog.Error("Error updating node label",
 			"label", statemanager.RemediationFailedLabelValue,
 			"error", err)
-		totalEventProcessingError.WithLabelValues("label_update_error",
+		processingErrors.WithLabelValues("label_update_error",
 			healthEventWithStatus.HealthEvent.NodeName).Inc()
 	}
 
@@ -187,14 +192,15 @@ func (r *Reconciler) runLogCollector(ctx context.Context, healthEvent *protos.He
 
 // performRemediation attempts to create maintenance resource with retries
 func (r *Reconciler) performRemediation(ctx context.Context, healthEventWithStatus *HealthEventDoc) (bool, string) {
+	nodeName := healthEventWithStatus.HealthEventWithStatus.HealthEvent.NodeName
+
 	// Update state to "remediating"
 	_, err := r.Config.StateManager.UpdateNVSentinelStateNodeLabel(ctx,
-		healthEventWithStatus.HealthEventWithStatus.HealthEvent.NodeName,
+		nodeName,
 		statemanager.RemediatingLabelValue, false)
 	if err != nil {
 		slog.Error("Error updating node label to remediating", "error", err)
-		totalEventProcessingError.WithLabelValues("label_update_error",
-			healthEventWithStatus.HealthEventWithStatus.HealthEvent.NodeName).Inc()
+		processingErrors.WithLabelValues("label_update_error", nodeName).Inc()
 	}
 
 	success := false
@@ -203,7 +209,7 @@ func (r *Reconciler) performRemediation(ctx context.Context, healthEventWithStat
 	for i := 1; i <= r.Config.UpdateMaxRetries; i++ {
 		slog.Info("Handle event for node",
 			"attempt", i,
-			"node", healthEventWithStatus.HealthEventWithStatus.HealthEvent.NodeName)
+			"node", nodeName)
 
 		success, crName = r.Config.RemediationClient.CreateMaintenanceResource(ctx, healthEventWithStatus)
 		if success {
@@ -215,6 +221,10 @@ func (r *Reconciler) performRemediation(ctx context.Context, healthEventWithStat
 		}
 	}
 
+	if !success {
+		processingErrors.WithLabelValues("cr_creation_failed", nodeName).Inc()
+	}
+
 	// Update final state based on success/failure
 	remediationLabelValue := statemanager.RemediationFailedLabelValue
 	if success {
@@ -222,14 +232,13 @@ func (r *Reconciler) performRemediation(ctx context.Context, healthEventWithStat
 	}
 
 	_, err = r.Config.StateManager.UpdateNVSentinelStateNodeLabel(ctx,
-		healthEventWithStatus.HealthEventWithStatus.HealthEvent.NodeName,
+		nodeName,
 		remediationLabelValue, false)
 	if err != nil {
 		slog.Error("Error updating node label",
 			"label", remediationLabelValue,
 			"error", err)
-		totalEventProcessingError.WithLabelValues("label_update_error",
-			healthEventWithStatus.HealthEventWithStatus.HealthEvent.NodeName).Inc()
+		processingErrors.WithLabelValues("label_update_error", nodeName).Inc()
 	}
 
 	return success, crName
@@ -251,7 +260,7 @@ func (r *Reconciler) handleUnquarantineEvent(
 	}
 
 	if err := watcher.MarkProcessed(context.Background()); err != nil {
-		totalEventProcessingError.WithLabelValues("mark_processed_error", nodeName).Inc()
+		processingErrors.WithLabelValues("mark_processed_error", nodeName).Inc()
 		slog.Error("Error updating resume token", "error", err)
 	}
 }
@@ -272,7 +281,7 @@ func (r *Reconciler) handleRemediationEvent(
 	// Check if we should skip this event (NONE actions or unsupported actions)
 	if r.shouldSkipEvent(ctx, healthEventWithStatus.HealthEventWithStatus) {
 		if err := watcher.MarkProcessed(ctx); err != nil {
-			totalEventProcessingError.WithLabelValues("mark_processed_error", nodeName).Inc()
+			processingErrors.WithLabelValues("mark_processed_error", nodeName).Inc()
 			slog.Error("Error updating resume token", "error", err)
 		}
 
@@ -281,7 +290,7 @@ func (r *Reconciler) handleRemediationEvent(
 
 	shouldCreateCR, existingCR, err := r.checkExistingCRStatus(ctx, healthEvent)
 	if err != nil {
-		totalEventProcessingError.WithLabelValues("cr_status_check_error", nodeName).Inc()
+		processingErrors.WithLabelValues("cr_status_check_error", nodeName).Inc()
 		slog.Error("Error checking existing CR status", "node", nodeName, "error", err)
 	}
 
@@ -290,8 +299,10 @@ func (r *Reconciler) handleRemediationEvent(
 			"node", nodeName,
 			"existingCR", existingCR)
 
+		eventsProcessed.WithLabelValues(CRStatusSkipped, nodeName).Inc()
+
 		if err := watcher.MarkProcessed(ctx); err != nil {
-			totalEventProcessingError.WithLabelValues("mark_processed_error", nodeName).Inc()
+			processingErrors.WithLabelValues("mark_processed_error", nodeName).Inc()
 			slog.Error("Error updating resume token", "error", err)
 		}
 
@@ -301,16 +312,16 @@ func (r *Reconciler) handleRemediationEvent(
 	nodeRemediatedStatus, _ := r.performRemediation(ctx, healthEventWithStatus)
 
 	if err := r.updateNodeRemediatedStatus(ctx, collection, event, nodeRemediatedStatus); err != nil {
-		totalEventProcessingError.WithLabelValues("update_status_error", nodeName).Inc()
+		processingErrors.WithLabelValues("update_status_error", nodeName).Inc()
 		log.Printf("\nError updating remediation status for node: %+v\n", err)
 
 		return
 	}
 
-	totalEventsSuccessfullyProcessed.Inc()
+	eventsProcessed.WithLabelValues(CRStatusCreated, nodeName).Inc()
 
 	if err := watcher.MarkProcessed(ctx); err != nil {
-		totalEventProcessingError.WithLabelValues("mark_processed_error", nodeName).Inc()
+		processingErrors.WithLabelValues("mark_processed_error", nodeName).Inc()
 		slog.Error("Error updating resume token", "error", err)
 	}
 }

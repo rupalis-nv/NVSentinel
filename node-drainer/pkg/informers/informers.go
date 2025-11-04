@@ -380,7 +380,7 @@ func (i *Informers) sendEvictionRequestForPod(ctx context.Context, namespace str
 		}
 
 		if errors.IsTooManyRequests(err) {
-			metrics.NodeDrainError.WithLabelValues("PDB_blocking_eviction_error", pod.Spec.NodeName).Inc()
+			metrics.ProcessingErrors.WithLabelValues("PDB_blocking_eviction_error", pod.Spec.NodeName).Inc()
 		}
 
 		return fmt.Errorf("error evicting pod %s from namespace %s: %w", pod.Name, pod.Namespace, err)
@@ -487,6 +487,8 @@ func (i *Informers) DeletePodsAfterTimeout(ctx context.Context, nodeName string,
 	evicted, remainingPods := i.checkIfPodsPresentInNamespaceAndNode(namespaces, nodeName)
 	if evicted {
 		slog.Info("All pods on node have been deleted", "node", nodeName)
+		metrics.NodeDrainTimeout.WithLabelValues(nodeName).Set(0)
+
 		return nil
 	}
 
@@ -500,6 +502,8 @@ func (i *Informers) DeletePodsAfterTimeout(ctx context.Context, nodeName string,
 			metrics.NodeDrainTimeoutReached.WithLabelValues(nodeName, ns).Inc()
 		}
 
+		metrics.NodeDrainTimeout.WithLabelValues(nodeName).Set(0)
+
 		if err := i.forceDeletePods(ctx, remainingPods); err != nil {
 			slog.Error("Failed to force delete pods on node",
 				"node", nodeName,
@@ -511,6 +515,8 @@ func (i *Informers) DeletePodsAfterTimeout(ctx context.Context, nodeName string,
 		// After force deleting, requeue to verify pods are gone
 		return fmt.Errorf("force deleted %d pods, requeueing to verify deletion on node %s", len(remainingPods), nodeName)
 	}
+
+	metrics.NodeDrainTimeout.WithLabelValues(nodeName).Set(1)
 
 	podNames := make([]string, 0, len(remainingPods))
 	for _, pod := range remainingPods {
@@ -742,7 +748,7 @@ func (i *Informers) CheckIfAllPodsAreEvictedInImmediateMode(ctx context.Context,
 
 		err := i.forceDeletePods(ctx, remainingPods)
 		if err != nil {
-			metrics.NodeDrainError.WithLabelValues("pods_force_deletion_error", nodeName).Inc()
+			metrics.ProcessingErrors.WithLabelValues("pods_force_deletion_error", nodeName).Inc()
 			slog.Error("Failed to force delete pods on node",
 				"node", nodeName,
 				"error", err)

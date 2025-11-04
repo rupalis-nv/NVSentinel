@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -30,8 +29,11 @@ import (
 	"github.com/nvidia/nvsentinel/fault-remediation/pkg/common"
 	"github.com/nvidia/nvsentinel/fault-remediation/pkg/config"
 	"github.com/nvidia/nvsentinel/fault-remediation/pkg/crstatus"
+	"github.com/nvidia/nvsentinel/store-client/pkg/storewatcher"
 
 	"github.com/nvidia/nvsentinel/commons/pkg/statemanager"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
@@ -191,7 +193,7 @@ func TestCRBasedDeduplication_Integration(t *testing.T) {
 	nodeName := "test-node-dedup-" + primitive.NewObjectID().Hex()[:8]
 	createTestNode(ctx, nodeName, nil, map[string]string{"test": "label"})
 	defer func() {
-		_ = testClient.CoreV1().Nodes().Delete(ctx, nodeName, metav1.DeleteOptions{})
+		testClient.CoreV1().Nodes().Delete(ctx, nodeName, metav1.DeleteOptions{})
 	}()
 
 	t.Run("FirstEvent_CreatesAnnotation", func(t *testing.T) {
@@ -245,7 +247,7 @@ func TestCRBasedDeduplication_Integration(t *testing.T) {
 		assert.Equal(t, nodeName, cr.Object["spec"].(map[string]interface{})["nodeName"])
 
 		// Cleanup
-		_ = testDynamic.Resource(gvr).Delete(ctx, crName, metav1.DeleteOptions{})
+		testDynamic.Resource(gvr).Delete(ctx, crName, metav1.DeleteOptions{})
 	})
 
 	t.Run("SecondEvent_SkippedWhenCRInProgress", func(t *testing.T) {
@@ -293,7 +295,7 @@ func TestCRBasedDeduplication_Integration(t *testing.T) {
 			Version:  "v1alpha1",
 			Resource: "rebootnodes",
 		}
-		_ = testDynamic.Resource(gvr).Delete(ctx, firstCRName, metav1.DeleteOptions{})
+		testDynamic.Resource(gvr).Delete(ctx, firstCRName, metav1.DeleteOptions{})
 	})
 
 	t.Run("FailedCR_CleansAnnotationAndAllowsRetry", func(t *testing.T) {
@@ -360,8 +362,8 @@ func TestCRBasedDeduplication_Integration(t *testing.T) {
 			Version:  "v1alpha1",
 			Resource: "rebootnodes",
 		}
-		_ = testDynamic.Resource(gvr).Delete(ctx, firstCRName, metav1.DeleteOptions{})
-		_ = testDynamic.Resource(gvr).Delete(ctx, secondCRName, metav1.DeleteOptions{})
+		testDynamic.Resource(gvr).Delete(ctx, firstCRName, metav1.DeleteOptions{})
+		testDynamic.Resource(gvr).Delete(ctx, secondCRName, metav1.DeleteOptions{})
 	})
 
 	t.Run("CrossAction_SameGroupDeduplication", func(t *testing.T) {
@@ -415,7 +417,7 @@ func TestCRBasedDeduplication_Integration(t *testing.T) {
 			Version:  "v1alpha1",
 			Resource: "rebootnodes",
 		}
-		_ = testDynamic.Resource(gvr).Delete(ctx, firstCRName, metav1.DeleteOptions{})
+		testDynamic.Resource(gvr).Delete(ctx, firstCRName, metav1.DeleteOptions{})
 	})
 }
 
@@ -425,7 +427,7 @@ func TestEventSequenceWithAnnotations_Integration(t *testing.T) {
 	nodeName := "test-node-sequence-" + primitive.NewObjectID().Hex()[:8]
 	createTestNode(ctx, nodeName, nil, map[string]string{"test": "label"})
 	defer func() {
-		_ = testClient.CoreV1().Nodes().Delete(ctx, nodeName, metav1.DeleteOptions{})
+		testClient.CoreV1().Nodes().Delete(ctx, nodeName, metav1.DeleteOptions{})
 	}()
 
 	cleanupNodeAnnotations(ctx, t, nodeName)
@@ -527,8 +529,8 @@ func TestEventSequenceWithAnnotations_Integration(t *testing.T) {
 	assert.Equal(t, crName2, state.EquivalenceGroups["restart"].MaintenanceCR)
 
 	// Cleanup
-	_ = testDynamic.Resource(gvr).Delete(ctx, crName1, metav1.DeleteOptions{})
-	_ = testDynamic.Resource(gvr).Delete(ctx, crName2, metav1.DeleteOptions{})
+	testDynamic.Resource(gvr).Delete(ctx, crName1, metav1.DeleteOptions{})
+	testDynamic.Resource(gvr).Delete(ctx, crName2, metav1.DeleteOptions{})
 }
 
 // TestFullReconcilerWithMockedMongoDB tests the entire reconciler flow
@@ -539,7 +541,7 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 	nodeName := "test-node-full-e2e-" + primitive.NewObjectID().Hex()[:8]
 	createTestNode(ctx, nodeName, nil, map[string]string{"test": "label"})
 	defer func() {
-		_ = testClient.CoreV1().Nodes().Delete(ctx, nodeName, metav1.DeleteOptions{})
+		testClient.CoreV1().Nodes().Delete(ctx, nodeName, metav1.DeleteOptions{})
 	}()
 
 	cleanupNodeAnnotations(ctx, t, nodeName)
@@ -563,11 +565,7 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 		}
 
 		// Create mock watcher with event channel
-		eventsChan := make(chan bson.M, 10)
-		mockWatcher := &MockChangeStreamWatcher{
-			eventsChan:          eventsChan,
-			markProcessedCalled: 0,
-		}
+		mockWatcher := storewatcher.NewFakeChangeStreamWatcher()
 
 		cfg := ReconcilerConfig{
 			RemediationClient: remediationClient,
@@ -577,6 +575,9 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 		}
 
 		reconcilerInstance := NewReconciler(cfg, false)
+
+		beforeReceived := getCounterValue(t, totalEventsReceived)
+		beforeDuration := getHistogramCount(t, eventHandlingDuration)
 
 		// Start event processing loop (simulating Start() event loop)
 		reconcilerDone := make(chan struct{})
@@ -593,7 +594,7 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 		// Event 1: Send quarantine event through channel
 		eventID1 := primitive.NewObjectID()
 		event1 := createQuarantineEvent(eventID1, nodeName, protos.RecommendedAction_RESTART_BM)
-		eventsChan <- event1
+		mockWatcher.EventsChan <- event1
 
 		// Wait for CR creation
 		var crName string
@@ -644,7 +645,7 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 
 		eventID2 := primitive.NewObjectID()
 		event2 := createQuarantineEvent(eventID2, nodeName, protos.RecommendedAction_COMPONENT_RESET)
-		eventsChan <- event2
+		mockWatcher.EventsChan <- event2
 
 		// Wait for event to be processed and verify deduplication
 		assert.Eventually(t, func() bool {
@@ -688,7 +689,7 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 
 		// Event 3: Send unquarantine event
 		unquarantineEvent := createUnquarantineEvent(nodeName)
-		eventsChan <- unquarantineEvent
+		mockWatcher.EventsChan <- unquarantineEvent
 
 		// Wait for annotation cleanup
 		assert.Eventually(t, func() bool {
@@ -712,7 +713,7 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 		}
 
 		// Stop the reconciler by closing the events channel
-		close(eventsChan)
+		close(mockWatcher.EventsChan)
 
 		select {
 		case <-reconcilerDone:
@@ -722,13 +723,49 @@ func TestFullReconcilerWithMockedMongoDB_E2E(t *testing.T) {
 		}
 
 		// Verify MarkProcessed was called for processed events
-		mockWatcher.mu.Lock()
-		markedCount := mockWatcher.markProcessedCalled
-		mockWatcher.mu.Unlock()
+		_, markedCount, _, _ := mockWatcher.GetCallCounts()
 		assert.Greater(t, markedCount, 0, "MarkProcessed should be called for processed events")
 
+		afterReceived := getCounterValue(t, totalEventsReceived)
+		afterDuration := getHistogramCount(t, eventHandlingDuration)
+		createdCount := getCounterVecValue(t, eventsProcessed, CRStatusCreated, nodeName)
+		skippedCount := getCounterVecValue(t, eventsProcessed, CRStatusSkipped, nodeName)
+
+		assert.GreaterOrEqual(t, afterReceived, beforeReceived+3, "totalEventsReceived should increment for all events")
+		assert.GreaterOrEqual(t, createdCount, float64(1), "eventsProcessed with cr_status=created should increment for CR creation")
+		assert.GreaterOrEqual(t, skippedCount, float64(1), "eventsProcessed with cr_status=skipped should increment for duplicate event")
+		assert.GreaterOrEqual(t, afterDuration, beforeDuration+3, "eventHandlingDuration should record observations for all events")
+
 		// Cleanup
-		_ = testDynamic.Resource(gvr).Delete(ctx, crName, metav1.DeleteOptions{})
+		testDynamic.Resource(gvr).Delete(ctx, crName, metav1.DeleteOptions{})
+	})
+
+	t.Run("UnsupportedAction_TrackedInMetrics", func(t *testing.T) {
+		remediationClient := createTestRemediationClient(t, false)
+
+		cfg := ReconcilerConfig{
+			RemediationClient: remediationClient,
+			StateManager:      statemanager.NewStateManager(testClient),
+			UpdateMaxRetries:  3,
+			UpdateRetryDelay:  100 * time.Millisecond,
+		}
+
+		reconcilerInstance := NewReconciler(cfg, false)
+
+		beforeUnsupported := getCounterVecValue(t, totalUnsupportedRemediationActions, "UNKNOWN", nodeName)
+
+		healthEvent := model.HealthEventWithStatus{
+			HealthEvent: &protos.HealthEvent{
+				NodeName:          nodeName,
+				RecommendedAction: protos.RecommendedAction_UNKNOWN,
+			},
+		}
+
+		shouldSkip := reconcilerInstance.shouldSkipEvent(ctx, healthEvent)
+		assert.True(t, shouldSkip, "Should skip unsupported action")
+
+		afterUnsupported := getCounterVecValue(t, totalUnsupportedRemediationActions, "UNKNOWN", nodeName)
+		assert.Equal(t, beforeUnsupported+1, afterUnsupported, "totalUnsupportedRemediationActions should increment")
 	})
 }
 
@@ -769,34 +806,6 @@ func createUnquarantineEvent(nodeName string) bson.M {
 			},
 		},
 	}
-}
-
-// MockChangeStreamWatcher mocks the change stream watcher for testing
-// Implements WatcherInterface from reconciler package
-type MockChangeStreamWatcher struct {
-	eventsChan          chan bson.M
-	markProcessedCalled int
-	mu                  sync.Mutex
-}
-
-func (m *MockChangeStreamWatcher) Events() <-chan bson.M {
-	return m.eventsChan
-}
-
-func (m *MockChangeStreamWatcher) Start(ctx context.Context) {
-	// No-op for mock - events are sent directly to channel in tests
-}
-
-func (m *MockChangeStreamWatcher) Close(ctx context.Context) error {
-	// No-op for mock - channel is closed in test
-	return nil
-}
-
-func (m *MockChangeStreamWatcher) MarkProcessed(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.markProcessedCalled++
-	return nil
 }
 
 // Helper functions
@@ -905,4 +914,53 @@ func cleanupNodeAnnotations(ctx context.Context, t *testing.T, nodeName string) 
 	if err != nil {
 		t.Logf("Warning: Failed to clean node annotations: %v", err)
 	}
+}
+
+// Metrics E2E Tests
+
+// TestMetrics_ProcessingErrors tests error tracking
+func TestMetrics_ProcessingErrors(t *testing.T) {
+	reconciler := &Reconciler{}
+
+	beforeError := getCounterVecValue(t, processingErrors, "unmarshal_doc_error", "unknown")
+
+	invalidEvent := bson.M{
+		"fullDocument": "invalid-data",
+	}
+
+	mockWatcher := storewatcher.NewFakeChangeStreamWatcher()
+	mockColl := &MockCollection{}
+
+	reconciler.processEvent(testContext, invalidEvent, mockWatcher, mockColl)
+
+	afterError := getCounterVecValue(t, processingErrors, "unmarshal_doc_error", "unknown")
+	assert.Greater(t, afterError, beforeError, "processingErrors should increment for unmarshal error")
+}
+
+// Helper functions for reading Prometheus metrics
+
+func getCounterValue(t *testing.T, counter prometheus.Counter) float64 {
+	t.Helper()
+	metric := &dto.Metric{}
+	err := counter.Write(metric)
+	require.NoError(t, err)
+	return metric.Counter.GetValue()
+}
+
+func getCounterVecValue(t *testing.T, counterVec *prometheus.CounterVec, labelValues ...string) float64 {
+	t.Helper()
+	counter, err := counterVec.GetMetricWithLabelValues(labelValues...)
+	require.NoError(t, err)
+	metric := &dto.Metric{}
+	err = counter.Write(metric)
+	require.NoError(t, err)
+	return metric.Counter.GetValue()
+}
+
+func getHistogramCount(t *testing.T, histogram prometheus.Histogram) uint64 {
+	t.Helper()
+	metric := &dto.Metric{}
+	err := histogram.Write(metric)
+	require.NoError(t, err)
+	return metric.Histogram.GetSampleCount()
 }

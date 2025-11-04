@@ -388,7 +388,6 @@ func (l *Labeler) getDriverLabelForNodeExcluding(nodeName string, excludePod *v1
 
 // updateNodeLabelsForPod updates only DCGM and driver labels (kata is handled separately by node events)
 func (l *Labeler) updateNodeLabelsForPod(nodeName, expectedDCGMVersion, expectedDriverLabel string) error {
-	updateStartTime := time.Now()
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		node, err := l.clientset.CoreV1().Nodes().Get(l.ctx, nodeName, metav1.GetOptions{})
 		if err != nil {
@@ -440,8 +439,6 @@ func (l *Labeler) updateNodeLabelsForPod(nodeName, expectedDCGMVersion, expected
 		return fmt.Errorf("failed to reconcile node labeling for %s: %w", nodeName, err)
 	}
 
-	metrics.NodeUpdateDuration.Observe(time.Since(updateStartTime).Seconds())
-
 	return nil
 }
 
@@ -491,6 +488,7 @@ func (l *Labeler) updateKataLabel(nodeName, expectedKataLabel string) error {
 	})
 
 	if err != nil {
+		metrics.NodeUpdateFailures.Inc()
 		return fmt.Errorf("failed to update kata label for %s: %w", nodeName, err)
 	}
 
