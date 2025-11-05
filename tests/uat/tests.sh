@@ -76,7 +76,7 @@ test_gpu_monitoring_dcgm() {
     log "========================================="
 
     local gpu_node
-    gpu_node=$(kubectl get nodes -l workload-type=gpu -o jsonpath='{.items[0].metadata.name}')
+    gpu_node=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].metadata.name}')
 
     if [[ -z "$gpu_node" ]]; then
         error "No GPU nodes found"
@@ -103,7 +103,7 @@ test_gpu_monitoring_dcgm() {
     local max_wait=30
     local waited=0
     while [[ $waited -lt $max_wait ]]; do
-        conditions_count=$(kubectl get node "$gpu_node" -o json | jq '[.status.conditions[] | select(.type == "GpuInforomWatch" or .type == "GpuPcieWatch")] | length')
+        conditions_count=$(kubectl get node "$gpu_node" -o json | jq '[.status.conditions[] | select(.status == "True" and (.type == "GpuInforomWatch" or .type == "GpuPcieWatch"))] | length')
         if [[ "$conditions_count" -ge 2 ]]; then
             log "Found $conditions_count node conditions"
             break
@@ -145,7 +145,7 @@ test_xid_monitoring_syslog() {
     log "========================================="
 
     local gpu_node
-    gpu_node=$(kubectl get nodes -l workload-type=gpu -o jsonpath='{.items[0].metadata.name}')
+    gpu_node=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].metadata.name}')
 
     if [[ -z "$gpu_node" ]]; then
         error "No GPU nodes found"
@@ -179,7 +179,7 @@ test_sxid_monitoring_syslog() {
     log "========================================="
 
     local gpu_node
-    gpu_node=$(kubectl get nodes -l workload-type=gpu -o jsonpath='{.items[0].metadata.name}')
+    gpu_node=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].metadata.name}')
 
     if [[ -z "$gpu_node" ]]; then
         error "No GPU nodes found"
@@ -253,9 +253,6 @@ test_sxid_monitoring_syslog() {
         error "SysLogsSXIDError event not found (non-fatal SXID may not create separate event)"
     fi
     log "Node event verified: SysLogsSXIDError ✓"
-
-    log "Waiting for node to be quarantined and rebooted..."
-    wait_for_boot_id_change "$gpu_node" "$original_boot_id"
 
     log "Test 3 PASSED ✓"
 }

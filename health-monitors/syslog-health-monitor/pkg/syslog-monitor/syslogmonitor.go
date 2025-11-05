@@ -662,14 +662,14 @@ func (sm *SyslogMonitor) processJournalEntries(journal Journal, check CheckDefin
 			}
 			// This entry (matched or not) is considered processed.
 			sm.checkLastCursors[check.Name] = currentEntryCursor // Update cursor for the next run
-			slog.Info("Check, considered processed", "name", check.Name,
+			slog.Debug("Check errored but considered processed", "name", check.Name,
 				"message", message,
 				"cursor", currentEntryCursor)
 		}
 
 		advancedNext, advErr := journal.Next()
 		if advErr == io.EOF || advancedNext == 0 { //nolint:errorlint // TODO
-			slog.Info("Check, no more", "name", check.Name, "cursor", currentEntryCursor)
+			slog.Info("Check no more", "name", check.Name, "cursor", currentEntryCursor)
 			// sm.checkLastCursors[checkName] is already set to currentEntryCursor.
 			break
 		}
