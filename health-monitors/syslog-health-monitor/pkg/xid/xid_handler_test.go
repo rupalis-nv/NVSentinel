@@ -192,11 +192,14 @@ func TestProcessLine(t *testing.T) {
 				assert.False(t, event.IsHealthy)
 				assert.True(t, event.IsFatal)
 				assert.Equal(t, pb.RecommendedAction_CONTACT_SUPPORT, event.RecommendedAction)
-				assert.Contains(t, event.Message, "GPU has fallen off the bus")
-				assert.Contains(t, event.ErrorCode, "Xid 79")
+				assert.Equal(t, "NVRM: Xid (PCI:0000:00:08.0): 79, pid=12345, name=test-process", event.Message)
+				require.Len(t, event.ErrorCode, 1)
+				assert.Equal(t, "Xid 79", event.ErrorCode[0])
 				require.Len(t, event.EntitiesImpacted, 1)
 				assert.Equal(t, "PCI", event.EntitiesImpacted[0].EntityType)
 				assert.Equal(t, "0000:00:08.0", event.EntitiesImpacted[0].EntityValue)
+				// Issue #197: Message field stores full journal, no Metadata duplication
+				assert.Empty(t, event.Metadata)
 			},
 		},
 		{
@@ -237,6 +240,8 @@ func TestProcessLine(t *testing.T) {
 				assert.Equal(t, "PCI", event.EntitiesImpacted[0].EntityType)
 				assert.Equal(t, "GPU", event.EntitiesImpacted[1].EntityType)
 				assert.Equal(t, "GPU-12345678-1234-1234-1234-123456789012", event.EntitiesImpacted[1].EntityValue)
+				assert.Equal(t, "NVRM: Xid (PCI:0000:00:08.0): 79, pid=12345, name=test-process", event.Message)
+				assert.Empty(t, event.Metadata)
 			},
 		},
 		{
@@ -368,12 +373,12 @@ func TestCreateHealthEventFromResponse(t *testing.T) {
 				assert.False(t, event.IsHealthy)
 				assert.True(t, event.IsFatal)
 				assert.Equal(t, pb.RecommendedAction_CONTACT_SUPPORT, event.RecommendedAction)
-				assert.Contains(t, event.Message, "GPU has fallen off the bus")
-				assert.Contains(t, event.Message, "CONTACT_SUPPORT")
-				assert.Contains(t, event.ErrorCode, "Xid 79")
+				assert.Equal(t, "Test XID message", event.Message)
+				require.Len(t, event.ErrorCode, 1)
+				assert.Equal(t, "Xid 79", event.ErrorCode[0])
 				assert.Equal(t, "test-node", event.NodeName)
 				assert.NotNil(t, event.GeneratedTimestamp)
-				assert.Equal(t, "Test XID message", event.Metadata["JOURNAL_MESSAGE"])
+				assert.Empty(t, event.Metadata)
 			},
 		},
 		{
@@ -401,6 +406,8 @@ func TestCreateHealthEventFromResponse(t *testing.T) {
 				assert.Equal(t, "0000:00:09.0", event.EntitiesImpacted[0].EntityValue)
 				assert.Equal(t, "GPU", event.EntitiesImpacted[1].EntityType)
 				assert.Equal(t, "GPU-ABCDEF12-3456-7890-ABCD-EF1234567890", event.EntitiesImpacted[1].EntityValue)
+				assert.Equal(t, "Test XID message", event.Message)
+				assert.Empty(t, event.Metadata)
 			},
 		},
 	}

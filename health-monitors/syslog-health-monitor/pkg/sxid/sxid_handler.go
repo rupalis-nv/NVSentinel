@@ -86,7 +86,7 @@ func (sxidHandler *SXIDHandler) ProcessLine(message string) (*pb.HealthEvents, e
 			{EntityType: "NVLINK", EntityValue: strconv.Itoa(sxidErrorEvent.Link)},
 			{EntityType: "GPU", EntityValue: strconv.Itoa(gpuID)},
 		},
-		Message:           sxidErrorEvent.Message,
+		Message:           message,
 		IsFatal:           sxidErrorEvent.IsFatal,
 		IsHealthy:         false,
 		NodeName:          sxidHandler.nodeName,

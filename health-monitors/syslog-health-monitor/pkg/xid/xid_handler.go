@@ -136,15 +136,13 @@ func (xidHandler *XIDHandler) createHealthEventFromResponse(xidResp *parser.Resp
 		ComponentClass:     xidHandler.defaultComponentClass,
 		GeneratedTimestamp: timestamppb.New(time.Now()),
 		EntitiesImpacted:   entitesImpacted,
-		Message:            fmt.Sprintf("%s; Resolution: %s", xidResp.Result.Mnemonic, xidResp.Result.Resolution),
+		Message:            message,
 		IsFatal:            xidHandler.determineFatality(recommendedAction),
 		IsHealthy:          false,
 		NodeName:           xidHandler.nodeName,
 		RecommendedAction:  recommendedAction,
 		ErrorCode:          []string{xidResp.Result.DecodedXIDStr},
-		Metadata: map[string]string{
-			"JOURNAL_MESSAGE": message,
-		},
+		Metadata:           map[string]string{},
 	}
 
 	return &pb.HealthEvents{

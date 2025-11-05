@@ -135,3 +135,57 @@ func TestExtractInfoFromNVSwitchErrorMsg(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessLine(t *testing.T) {
+	testCases := []struct {
+		name        string
+		message     string
+		expectEvent bool
+		expectError bool
+	}{
+		{
+			name:        "Invalid SXID - no Link field",
+			message:     "nvidia-nvswitch0: SXid (PCI:0004:00:00.0): 26008, SOE Watchdog error",
+			expectEvent: false,
+			expectError: false,
+		},
+		{
+			name:        "Non-SXID message",
+			message:     "Some random log message",
+			expectEvent: false,
+			expectError: false,
+		},
+		{
+			name:        "Valid SXID but topology unavailable",
+			message:     "[123] nvidia-nvswitch3: SXid (PCI:0000:c1:00.0): 28006, Non-fatal, Link 46 MC TS crumbstore MCTO (First)",
+			expectEvent: false,
+			expectError: true, // getGPUID will fail without topology
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, err := NewSXIDHandler("test-node", "test-agent", "NVSWITCH", "sxid-check")
+			require.NoError(t, err)
+
+			events, err := handler.ProcessLine(tc.message)
+
+			if tc.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, events)
+			} else {
+				assert.NoError(t, err)
+				if tc.expectEvent {
+					require.NotNil(t, events)
+					require.Len(t, events.Events, 1)
+					event := events.Events[0]
+					// Validate Message field contains full journal message
+					assert.Equal(t, tc.message, event.Message)
+					assert.Empty(t, event.Metadata)
+				} else {
+					assert.Nil(t, events)
+				}
+			}
+		})
+	}
+}
