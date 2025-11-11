@@ -61,6 +61,12 @@ spec:
               value: {{ .Values.logCollector.enableGcpSosCollection | quote }}
             - name: ENABLE_AWS_SOS_COLLECTION
               value: {{ .Values.logCollector.enableAwsSosCollection | quote }}
+            - name: MOCK_MODE
+              value: {{ .Values.logCollector.mockMode | quote }}
+            - name: MOCK_EXIT_CODE
+              value: {{ .Values.logCollector.mockExitCode | quote }}
+            - name: MOCK_SLEEP_DURATION
+              value: {{ .Values.logCollector.mockSleepDuration | quote }}
           volumeMounts:
             - name: artifacts
               mountPath: /artifacts

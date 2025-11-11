@@ -172,6 +172,25 @@ func TestFatalHealthEvent(t *testing.T) {
 		return ctx
 	})
 
+	feature.Assess("Log collector job is created and completes successfully", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+		nodeName := ctx.Value(keyNodeName).(string)
+
+		client, err := c.NewClient()
+		assert.NoError(t, err, "failed to create kubernetes client")
+
+		t.Log("Waiting for log collector job to be created")
+		logCollectorJob := helpers.WaitForLogCollectorJobCreation(ctx, t, client)
+		t.Logf("Log collector job created: %s", logCollectorJob.GetName())
+
+		t.Log("Waiting for log collector job to complete")
+		helpers.WaitForLogCollectorJobCompletion(ctx, t, client, logCollectorJob.GetName())
+		t.Log("Log collector job completed successfully")
+
+		helpers.ValidateMockArtifactUploads(ctx, t, client, nodeName)
+
+		return ctx
+	})
+
 	feature.Assess("Remediation CR is created and completes", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 		nodeName := ctx.Value(keyNodeName).(string)
 

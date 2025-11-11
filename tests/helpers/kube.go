@@ -1398,6 +1398,24 @@ func PortForwardPod(
 	return stopChan, readyChan
 }
 
+// GetFileServerPodName returns the name of the file-server pod in the NVSentinel namespace
+func GetFileServerPodName(ctx context.Context, client klient.Client) (string, error) {
+	podList := &v1.PodList{}
+
+	err := client.Resources(NVSentinelNamespace).List(ctx, podList)
+	if err != nil {
+		return "", fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range podList.Items {
+		if strings.Contains(pod.Name, "file-server") && IsPodReady(pod) {
+			return pod.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("file-server pod not found")
+}
+
 // WaitForNodeConditionWithCheckName waits for the node to have a condition with the reason as checkName.
 func WaitForNodeConditionWithCheckName(
 	ctx context.Context, t *testing.T, c klient.Client, nodeName, checkName, message string,

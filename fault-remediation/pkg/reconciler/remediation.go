@@ -270,6 +270,38 @@ func (c *FaultRemediationClient) handleCreateCRError(
 	return false, ""
 }
 
+// updateJobEnvVar updates an environment variable in the job spec.
+func updateJobEnvVar(job *batchv1.Job, envName, envValue string) {
+	for i := range job.Spec.Template.Spec.Containers {
+		for j := range job.Spec.Template.Spec.Containers[i].Env {
+			if job.Spec.Template.Spec.Containers[i].Env[j].Name == envName {
+				job.Spec.Template.Spec.Containers[i].Env[j].Value = envValue
+				return
+			}
+		}
+	}
+}
+
+// applyNodeAnnotationsToJob applies test overrides from node annotations to the job spec.
+func (c *FaultRemediationClient) applyNodeAnnotationsToJob(ctx context.Context, job *batchv1.Job, nodeName string) {
+	node, err := c.kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil || node.Annotations == nil {
+		return
+	}
+
+	// Override MOCK_EXIT_CODE from annotation (for test scenarios)
+	if exitCodeStr, ok := node.Annotations["nvsentinel.nvidia.com/log-collector-mock-exit-code"]; ok {
+		log.Printf("Overriding log collector mock exit code from node annotation: %s", exitCodeStr)
+		updateJobEnvVar(job, "MOCK_EXIT_CODE", exitCodeStr)
+	}
+
+	// Override MOCK_SLEEP_DURATION from annotation (for test scenarios)
+	if sleepDurationStr, ok := node.Annotations["nvsentinel.nvidia.com/log-collector-mock-sleep"]; ok {
+		log.Printf("Overriding log collector mock sleep duration from node annotation: %s", sleepDurationStr)
+		updateJobEnvVar(job, "MOCK_SLEEP_DURATION", sleepDurationStr)
+	}
+}
+
 // RunLogCollectorJob creates a log collector Job and waits for completion.
 // nolint: cyclop // todo
 func (c *FaultRemediationClient) RunLogCollectorJob(ctx context.Context, nodeName string) error {
@@ -297,6 +329,9 @@ func (c *FaultRemediationClient) RunLogCollectorJob(ctx context.Context, nodeNam
 		return fmt.Errorf("failed to unmarshal Job manifest: %w", err)
 	}
 
+	// Apply test overrides from node annotations (for test scenarios)
+	c.applyNodeAnnotationsToJob(ctx, job, nodeName)
+
 	// Set target node
 	job.Spec.Template.Spec.NodeName = nodeName
 
@@ -311,7 +346,7 @@ func (c *FaultRemediationClient) RunLogCollectorJob(ctx context.Context, nodeNam
 	log.Printf("Waiting for log collector job %s to complete", created.Name)
 
 	// Use a context with timeout for the watch
-	watchCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	watchCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	// Use SharedInformerFactory for efficient job status monitoring with filtering

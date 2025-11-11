@@ -121,6 +121,12 @@ fault-quarantine:
 fault-remediation:
   logLevel: debug
 
+  logCollector:
+    enabled: true
+    mockMode: "true"
+    mockExitCode: "0"
+    mockSleepDuration: "5"
+
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

@@ -30,8 +30,80 @@ MUST_GATHER_SCRIPT_URL="${MUST_GATHER_SCRIPT_URL:-https://raw.githubusercontent.
 ENABLE_GCP_SOS_COLLECTION="${ENABLE_GCP_SOS_COLLECTION:-false}"
 ENABLE_AWS_SOS_COLLECTION="${ENABLE_AWS_SOS_COLLECTION:-false}"
 
+# Mock mode for testing
+MOCK_MODE="${MOCK_MODE:-false}"
+MOCK_EXIT_CODE="${MOCK_EXIT_CODE:-0}"
+MOCK_SLEEP_DURATION="${MOCK_SLEEP_DURATION:-5}"
+
 mkdir -p "${ARTIFACTS_DIR}"
 echo "[INFO] Target node: ${NODE_NAME} | GPU Operator namespace: ${GPU_OPERATOR_NAMESPACE} | Driver container: ${DRIVER_CONTAINER_NAME}"
+
+# Early exit for mock mode - generate synthetic artifacts and skip real collection
+if [ "${MOCK_MODE}" = "true" ]; then
+    echo "[INFO] Mock mode enabled - generating synthetic artifacts"
+    
+    # Generate mock nvidia-bug-report artifact
+    BUG_REPORT_LOCAL="${ARTIFACTS_DIR}/nvidia-bug-report-${NODE_NAME}-${TIMESTAMP}.log.gz"
+    if [ -f "/mock-nvidia-bug-report.sh" ]; then
+        echo "[INFO] Running mock nvidia-bug-report.sh"
+        /mock-nvidia-bug-report.sh --output-file "${ARTIFACTS_DIR}/nvidia-bug-report-${NODE_NAME}-${TIMESTAMP}.log"
+    else
+        echo "[INFO] Creating synthetic nvidia-bug-report"
+        echo "Mock nvidia-bug-report output for ${NODE_NAME} at ${TIMESTAMP}" | gzip > "${BUG_REPORT_LOCAL}"
+    fi
+    echo "[INFO] Mock bug report created: ${BUG_REPORT_LOCAL}"
+    
+    # Generate mock GPU Operator must-gather artifact
+    GPU_MG_DIR="${ARTIFACTS_DIR}/gpu-operator-must-gather"
+    mkdir -p "${GPU_MG_DIR}"
+    GPU_MG_TARBALL="${ARTIFACTS_DIR}/gpu-operator-must-gather-${NODE_NAME}-${TIMESTAMP}.tar.gz"
+    
+    if [ -f "/mock-must-gather.sh" ]; then
+        echo "[INFO] Running mock must-gather.sh"
+        cp /mock-must-gather.sh "${GPU_MG_DIR}/must-gather.sh"
+        chmod +x "${GPU_MG_DIR}/must-gather.sh"
+        bash "${GPU_MG_DIR}/must-gather.sh" || true
+    else
+        echo "[INFO] Creating synthetic must-gather data"
+        echo "Mock must-gather output for ${NODE_NAME} at ${TIMESTAMP}" > "${GPU_MG_DIR}/mock-data.txt"
+    fi
+    
+    tar -C "${GPU_MG_DIR}" -czf "${GPU_MG_TARBALL}" .
+    echo "[INFO] Mock must-gather tarball created: ${GPU_MG_TARBALL}"
+    
+    # Optional sleep to simulate collection time
+    if [ "${MOCK_SLEEP_DURATION}" -gt 0 ]; then
+        echo "[INFO] Sleeping ${MOCK_SLEEP_DURATION}s to simulate collection"
+        sleep "${MOCK_SLEEP_DURATION}"
+    fi
+    
+    # Upload mock artifacts if upload URL is configured
+    if [ -n "${UPLOAD_URL_BASE:-}" ]; then
+        echo "[INFO] Uploading mock artifacts to ${UPLOAD_URL_BASE}/${NODE_NAME}/${TIMESTAMP}"
+        
+        if [ -f "${BUG_REPORT_LOCAL}" ]; then
+            if curl -fsS -X PUT --upload-file "${BUG_REPORT_LOCAL}" \
+                "${UPLOAD_URL_BASE}/${NODE_NAME}/${TIMESTAMP}/$(basename "${BUG_REPORT_LOCAL}")"; then
+                echo "[UPLOAD_SUCCESS] mock nvidia-bug-report uploaded: $(basename "${BUG_REPORT_LOCAL}")"
+            else
+                echo "[UPLOAD_FAILED] Failed to upload mock nvidia-bug-report: $(basename "${BUG_REPORT_LOCAL}")" >&2
+            fi
+        fi
+        
+        if [ -f "${GPU_MG_TARBALL}" ]; then
+            if curl -fsS -X PUT --upload-file "${GPU_MG_TARBALL}" \
+                "${UPLOAD_URL_BASE}/${NODE_NAME}/${TIMESTAMP}/$(basename "${GPU_MG_TARBALL}")"; then
+                echo "[UPLOAD_SUCCESS] mock gpu-operator must-gather uploaded: $(basename "${GPU_MG_TARBALL}")"
+            else
+                echo "[UPLOAD_FAILED] Failed to upload mock gpu-operator must-gather: $(basename "${GPU_MG_TARBALL}")" >&2
+            fi
+        fi
+    fi
+    
+    echo "[INFO] Mock mode complete. Artifacts under ${ARTIFACTS_DIR}"
+    echo "[INFO] Mock mode: Exiting with code ${MOCK_EXIT_CODE}"
+    exit "${MOCK_EXIT_CODE}"
+fi
 
 # Function to detect if running on GCP using IMDS 
 is_running_on_gcp() {
@@ -197,8 +269,10 @@ fi
 GPU_MG_DIR="${ARTIFACTS_DIR}/gpu-operator-must-gather"
 mkdir -p "${GPU_MG_DIR}"
 echo "[INFO] Running GPU Operator must-gather..."
+
 curl -fsSL "${MUST_GATHER_SCRIPT_URL}" -o "${GPU_MG_DIR}/must-gather.sh"
 chmod +x "${GPU_MG_DIR}/must-gather.sh"
+
 bash "${GPU_MG_DIR}/must-gather.sh"
 
 GPU_MG_TARBALL="${ARTIFACTS_DIR}/gpu-operator-must-gather-${NODE_NAME}-${TIMESTAMP}.tar.gz"

@@ -105,3 +105,10 @@ logCollector:
   enableGcpSosCollection: false
   # Enable AWS-specific SOS report collection
   enableAwsSosCollection: false
+  # Mock mode for testing
+  # Values: "true" (enable mock mode), "false" (disable mock mode)
+  mockMode: false
+  # Exit code to use in mock mode (0 for success, non-zero for failure scenarios)
+  mockExitCode: 0
+  # Sleep duration in seconds during mock mode to simulate collection time
+  mockSleepDuration: 5

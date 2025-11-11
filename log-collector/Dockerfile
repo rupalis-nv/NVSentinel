@@ -44,6 +44,11 @@ WORKDIR /opt/log-collector
 COPY log-collector/entrypoint.sh /opt/log-collector/entrypoint.sh
 RUN chmod +x /opt/log-collector/entrypoint.sh
 
+# Copy mock scripts for testing
+COPY log-collector/mock-nvidia-bug-report.sh /mock-nvidia-bug-report.sh
+COPY log-collector/mock-must-gather.sh /mock-must-gather.sh
+RUN chmod +x /mock-nvidia-bug-report.sh /mock-must-gather.sh
+
 ENV PATH="/opt/log-collector:${PATH}"
 
 ENTRYPOINT ["/opt/log-collector/entrypoint.sh"]
