@@ -71,6 +71,8 @@ platformConnector:
 
   podAnnotations: {}
 
+  tolerations: []
+
   k8sConnector:
     enabled: true
     qps: 5.0
