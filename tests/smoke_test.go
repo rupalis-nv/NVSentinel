@@ -48,37 +48,10 @@ func TestFatalHealthEvent(t *testing.T) {
 		ctx = helpers.ApplyQuarantineConfig(ctx, t, c, "data/basic-matching-configmap.yaml")
 		ctx = helpers.ApplyNodeDrainerConfig(ctx, t, c, "data/nd-all-modes.yaml")
 
-		nodes, err := helpers.GetAllNodesNames(ctx, client)
-		assert.NoError(t, err, "failed to get cluster nodes")
-		assert.True(t, len(nodes) > 0, "no nodes found in cluster")
-
-		// Select from nodes that scale test never touched (starting from 50% onwards)
-		// Scale test uses first 45% of nodes, so selecting from 50%+ ensures no MongoDB collision
-		startIdx := int(float64(len(nodes)) * 0.50)
-		if startIdx >= len(nodes) {
-			startIdx = len(nodes) - 1
-		}
-		unusedNodes := nodes[startIdx:]
-
-		var nodeName string
-		for _, name := range unusedNodes {
-			node, err := helpers.GetNodeByName(ctx, client, name)
-			if err != nil {
-				t.Logf("failed to get node %s: %v", name, err)
-				continue
-			}
-			if !node.Spec.Unschedulable {
-				nodeName = name
-				break
-			}
-		}
-
-		if nodeName == "" {
-			nodeName = unusedNodes[0]
-			t.Logf("No uncordoned node in unused subset, using first unused node: %s", nodeName)
-		} else {
-			t.Logf("Selected uncordoned node: %s (from unused nodes starting at index %d)", nodeName, startIdx)
-		}
+		// Use a real (non-KWOK) node for smoke test to validate actual container execution
+		nodeName, err := helpers.GetRealNodeName(ctx, client)
+		assert.NoError(t, err, "failed to get real node")
+		t.Logf("Selected real node for smoke test: %s", nodeName)
 
 		err = helpers.CreateNamespace(ctx, client, workloadNamespace)
 		assert.NoError(t, err, "failed to create workloads namespace")
@@ -266,35 +239,10 @@ func TestFatalUnsupportedHealthEvent(t *testing.T) {
 		ctx = helpers.ApplyQuarantineConfig(ctx, t, c, "data/basic-matching-configmap.yaml")
 		ctx = helpers.ApplyNodeDrainerConfig(ctx, t, c, "data/nd-all-modes.yaml")
 
-		nodes, err := helpers.GetAllNodesNames(ctx, client)
-		assert.NoError(t, err, "failed to get cluster nodes")
-		assert.True(t, len(nodes) > 0, "no nodes found in cluster")
-
-		startIdx := int(float64(len(nodes)) * 0.50)
-		if startIdx >= len(nodes) {
-			startIdx = len(nodes) - 1
-		}
-		unusedNodes := nodes[startIdx:]
-
-		var nodeName string
-		for _, name := range unusedNodes {
-			node, err := helpers.GetNodeByName(ctx, client, name)
-			if err != nil {
-				t.Logf("failed to get node %s: %v", name, err)
-				continue
-			}
-			if !node.Spec.Unschedulable {
-				nodeName = name
-				break
-			}
-		}
-
-		if nodeName == "" {
-			nodeName = unusedNodes[0]
-			t.Logf("No uncordoned node in unused subset, using first unused node: %s", nodeName)
-		} else {
-			t.Logf("Selected uncordoned node: %s (from unused nodes starting at index %d)", nodeName, startIdx)
-		}
+		// Use a real (non-KWOK) node for smoke test to validate actual container execution
+		nodeName, err := helpers.GetRealNodeName(ctx, client)
+		assert.NoError(t, err, "failed to get real node")
+		t.Logf("Selected real node for smoke test: %s", nodeName)
 
 		err = helpers.CreateNamespace(ctx, client, workloadNamespace)
 		assert.NoError(t, err, "failed to create workloads namespace")

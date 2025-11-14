@@ -98,6 +98,7 @@ include('../health-events-analyzer/Tiltfile')
 include('../health-monitors/gpu-health-monitor/Tiltfile')
 include('../health-monitors/syslog-health-monitor/Tiltfile')
 include('../labeler/Tiltfile')
+include('../log-collector/Tiltfile')
 
 values_files = [
     '../distros/kubernetes/nvsentinel/values.yaml',
@@ -210,5 +211,13 @@ k8s_yaml('./kwok-pod-delete-respect-finalizers.yaml')
 k8s_resource(
     new_name='kwok-pod-delete-stage',
     objects=['pod-delete:stage'],
+    resource_deps=['kwok', 'kwok-stage-fast']
+)
+
+# KWOK Stage for log-collector failure injection testing
+k8s_yaml('../distros/kubernetes/nvsentinel/kwok-stages/log-collector-failure-stage.yaml')
+k8s_resource(
+    new_name='kwok-log-collector-failure-stage',
+    objects=['job-log-collector-failure:stage'],
     resource_deps=['kwok', 'kwok-stage-fast']
 )

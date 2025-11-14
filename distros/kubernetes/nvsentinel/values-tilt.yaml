@@ -121,6 +121,20 @@ fault-quarantine:
 fault-remediation:
   logLevel: debug
 
+  image:
+    pullPolicy: Always  # Always pull latest Tilt-built image
+
+  logCollector:
+    enabled: true
+    image:
+      repository: localhost:5001/ghcr.io_nvidia_nvsentinel_log-collector
+      tag: latest  # Use latest tag built by Tilt
+      pullPolicy: Always  # Always pull latest Tilt-built image
+    env:
+      MOCK_MODE: "true"
+      MOCK_EXIT_CODE: "0"
+      MOCK_SLEEP_DURATION: "2"
+
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

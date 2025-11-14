@@ -96,6 +96,7 @@ logCollector:
   enabled: false
   image:
     repository: ghcr.io/nvidia/nvsentinel/log-collector
+    # tag: latest  # Optional: Override global.image.tag for log-collector
     pullPolicy: IfNotPresent
   # HTTP endpoint where collected logs will be uploaded
   uploadURL: "http://nvsentinel-incluster-file-server.nvsentinel.svc.cluster.local/upload"

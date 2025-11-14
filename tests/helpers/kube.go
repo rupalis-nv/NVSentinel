@@ -513,6 +513,163 @@ func GetAllNodesNames(ctx context.Context, c klient.Client) ([]string, error) {
 	return nodeNames, nil
 }
 
+// GetKWOKNodeName returns a KWOK node name from the cluster.
+func GetKWOKNodeName(ctx context.Context, c klient.Client) (string, error) {
+	var nodeList v1.NodeList
+
+	err := c.Resources().List(ctx, &nodeList)
+	if err != nil {
+		return "", fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	for _, node := range nodeList.Items {
+		if node.Labels["type"] == "kwok" {
+			return node.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("no KWOK nodes found in cluster")
+}
+
+// GetRealNodeName returns a real (non-KWOK) node name from the cluster.
+// Prefers worker nodes that are schedulable, falls back to any real node.
+func GetRealNodeName(ctx context.Context, c klient.Client) (string, error) {
+	var nodeList v1.NodeList
+
+	// List ALL nodes (no filter)
+	err := c.Resources().List(ctx, &nodeList)
+	if err != nil {
+		return "", fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	var realWorkers []string
+
+	var realControlPlane []string
+
+	for _, node := range nodeList.Items {
+		// Skip KWOK nodes
+		if node.Labels["type"] == "kwok" {
+			continue
+		}
+
+		// Categorize real nodes
+		if _, isControlPlane := node.Labels["node-role.kubernetes.io/control-plane"]; isControlPlane {
+			realControlPlane = append(realControlPlane, node.Name)
+		} else {
+			realWorkers = append(realWorkers, node.Name)
+		}
+	}
+
+	// Prefer worker nodes
+	if len(realWorkers) > 0 {
+		return realWorkers[0], nil
+	}
+
+	// Fall back to control-plane
+	if len(realControlPlane) > 0 {
+		return realControlPlane[0], nil
+	}
+
+	return "", fmt.Errorf("no real nodes found in cluster")
+}
+
+// GetJobsForNode returns all job pods for a specific node in a namespace.
+func GetJobsForNode(ctx context.Context, t *testing.T, c klient.Client, nodeName, namespace string) []v1.Pod {
+	var podList v1.PodList
+
+	err := c.Resources(namespace).List(ctx, &podList)
+	if err != nil {
+		t.Logf("Failed to list pods in namespace %s: %v", namespace, err)
+		return nil
+	}
+
+	var jobPods []v1.Pod
+
+	for _, pod := range podList.Items {
+		if pod.Spec.NodeName == nodeName && pod.OwnerReferences != nil {
+			for _, owner := range pod.OwnerReferences {
+				if owner.Kind == "Job" {
+					jobPods = append(jobPods, pod)
+					break
+				}
+			}
+		}
+	}
+
+	return jobPods
+}
+
+// WaitForPodPhase waits for a pod to reach a specific phase.
+func WaitForPodPhase(
+	ctx context.Context,
+	c klient.Client,
+	podName, namespace string,
+	phase v1.PodPhase,
+	timeout time.Duration,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for pod %s to reach phase %s", podName, phase)
+		case <-ticker.C:
+			pod := &v1.Pod{}
+
+			err := c.Resources(namespace).Get(ctx, podName, "", pod)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+
+				return fmt.Errorf("failed to get pod %s: %w", podName, err)
+			}
+
+			if pod.Status.Phase == phase {
+				return nil
+			}
+		}
+	}
+}
+
+// WaitForMaintenanceCR waits for a maintenance CR to be created.
+func WaitForMaintenanceCR(ctx context.Context, c klient.Client, crName string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for maintenance CR %s", crName)
+		case <-ticker.C:
+			obj := &unstructured.Unstructured{}
+			obj.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "janitor.dgxc.nvidia.com",
+				Version: "v1alpha1",
+				Kind:    "RebootNode",
+			})
+
+			err := c.Resources().Get(ctx, crName, NVSentinelNamespace, obj)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+
+				return fmt.Errorf("failed to get maintenance CR %s: %w", crName, err)
+			}
+
+			return nil
+		}
+	}
+}
+
 func CreatePodsAndWaitTillRunning(
 	ctx context.Context, t *testing.T, c klient.Client, nodeNames []string, podTemplate *v1.Pod,
 ) {

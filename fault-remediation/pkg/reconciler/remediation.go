@@ -300,6 +300,10 @@ func (c *FaultRemediationClient) RunLogCollectorJob(ctx context.Context, nodeNam
 	// Set target node
 	job.Spec.Template.Spec.NodeName = nodeName
 
+	// Check for test-scenario annotation on the node and propagate to job and pod labels
+	log.Printf("[DEBUG] About to check test-scenario annotation for node %s", nodeName)
+	c.propagateTestScenarioLabel(ctx, nodeName, job)
+
 	// Create Job using typed client
 	created, err := c.kubeClient.BatchV1().Jobs(job.Namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
@@ -414,4 +418,45 @@ func (c *FaultRemediationClient) RunLogCollectorJob(ctx context.Context, nodeNam
 		close(stopCh)
 		return result
 	}
+}
+
+// propagateTestScenarioLabel checks for test-scenario annotation on node and propagates to job/pod labels.
+func (c *FaultRemediationClient) propagateTestScenarioLabel(ctx context.Context, nodeName string, job *batchv1.Job) {
+	log.Printf("[DEBUG] propagateTestScenarioLabel called for node %s", nodeName)
+
+	node, err := c.kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		log.Printf("Warning: failed to get node %s for annotation check: %v", nodeName, err)
+		return
+	}
+
+	log.Printf("[DEBUG] Node %s annotations: %v", nodeName, node.Annotations)
+
+	testScenario, ok := node.Annotations["nvsentinel.nvidia.com/test-scenario"]
+	if !ok {
+		log.Printf("[DEBUG] No test-scenario annotation found on node %s", nodeName)
+		return
+	}
+
+	log.Printf("[DEBUG] Found test-scenario annotation: %s", testScenario)
+
+	// Set label on Job metadata
+	if job.Labels == nil {
+		job.Labels = make(map[string]string)
+	}
+
+	job.Labels["test-scenario"] = testScenario
+
+	// Set label on Pod template metadata (so pods inherit it)
+	if job.Spec.Template.Labels == nil {
+		job.Spec.Template.Labels = make(map[string]string)
+	}
+
+	job.Spec.Template.Labels["test-scenario"] = testScenario
+
+	log.Printf(
+		"Applied test-scenario label '%s' to log collector job and pod template for node %s",
+		testScenario,
+		nodeName,
+	)
 }

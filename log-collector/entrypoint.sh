@@ -30,6 +30,28 @@ MUST_GATHER_SCRIPT_URL="${MUST_GATHER_SCRIPT_URL:-https://raw.githubusercontent.
 ENABLE_GCP_SOS_COLLECTION="${ENABLE_GCP_SOS_COLLECTION:-false}"
 ENABLE_AWS_SOS_COLLECTION="${ENABLE_AWS_SOS_COLLECTION:-false}"
 
+# Mock mode for testing - prepends mock scripts to PATH
+MOCK_MODE="${MOCK_MODE:-false}"
+MOCK_EXIT_CODE="${MOCK_EXIT_CODE:-0}"
+
+if [ "${MOCK_MODE}" = "true" ]; then
+  echo "[MOCK] Enabling mock mode - using mock nvidia-bug-report.sh and must-gather.sh"
+  MOCK_SCRIPTS_DIR="/opt/log-collector"
+  
+  # Copy mock scripts and make them executable
+  cp "${MOCK_SCRIPTS_DIR}/mock-nvidia-bug-report.sh" "${MOCK_SCRIPTS_DIR}/nvidia-bug-report.sh"
+  cp "${MOCK_SCRIPTS_DIR}/mock-must-gather.sh" "${MOCK_SCRIPTS_DIR}/must-gather.sh"
+  chmod +x "${MOCK_SCRIPTS_DIR}/nvidia-bug-report.sh" "${MOCK_SCRIPTS_DIR}/must-gather.sh"
+  
+  # Prepend to PATH so mocks are used instead of real tools
+  export PATH="${MOCK_SCRIPTS_DIR}:${PATH}"
+  
+  # Override MUST_GATHER_SCRIPT_URL to use local mock instead of downloading
+  MUST_GATHER_SCRIPT_URL="file://${MOCK_SCRIPTS_DIR}/must-gather.sh"
+  
+  echo "[MOCK] Mock mode enabled. nvidia-bug-report.sh and must-gather.sh will use mock versions."
+fi
+
 mkdir -p "${ARTIFACTS_DIR}"
 echo "[INFO] Target node: ${NODE_NAME} | GPU Operator namespace: ${GPU_OPERATOR_NAMESPACE} | Driver container: ${DRIVER_CONTAINER_NAME}"
 
@@ -77,8 +99,16 @@ AWS_SOS_REPORT=""
 GCP_NVIDIA_BUG_REPORT="/host/home/kubernetes/bin/nvidia/bin/nvidia-bug-report.sh"
 
 # 1) Collect nvidia-bug-report - auto-detect approach
+# In mock mode, use the local mock script directly
+if [ "${MOCK_MODE}" = "true" ]; then
+  echo "[MOCK] Using local mock nvidia-bug-report.sh"
+  BUG_REPORT_LOCAL_BASE="${ARTIFACTS_DIR}/nvidia-bug-report-${NODE_NAME}-${TIMESTAMP}"
+  BUG_REPORT_LOCAL="${BUG_REPORT_LOCAL_BASE}.log.gz"
+  nvidia-bug-report.sh --output-file "${BUG_REPORT_LOCAL_BASE}.log"
+  echo "[MOCK] Bug report saved to ${BUG_REPORT_LOCAL}"
+
 # Check if GCP COS nvidia-bug-report exists on the host filesystem (accessed via privileged container)
-if [ -f "${GCP_NVIDIA_BUG_REPORT}" ]; then
+elif [ -f "${GCP_NVIDIA_BUG_REPORT}" ]; then
   echo "[INFO] Found nvidia-bug-report at GCP COS location: ${GCP_NVIDIA_BUG_REPORT}"
   
   # Use GCP COS approach - write directly to container filesystem
