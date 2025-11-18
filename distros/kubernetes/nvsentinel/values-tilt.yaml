@@ -201,6 +201,15 @@ fault-quarantine:
 fault-remediation:
   logLevel: debug
 
+  logCollector:
+    enabled: true
+    image:
+      repository: localhost:5001/ghcr.io_nvidia_nvsentinel_log-collector
+      tag: latest  
+      pullPolicy: Always 
+    env:
+      MOCK_MODE: "true"
+    timeoutSeconds: 10  
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

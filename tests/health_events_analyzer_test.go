@@ -23,6 +23,7 @@ import (
 	pb "github.com/nvidia/nvsentinel/data-models/pkg/protos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 )
@@ -60,7 +61,10 @@ func TestMultipleRemediationsCompleted(t *testing.T) {
 		helpers.SendHealthEvent(ctx, t, event)
 
 		// FIXME(dims): This is not happening correctly and causing failures in CI.
-		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, gpuNodeName, "MultipleRemediations", "ErrorCode:31 GPU:0 Recommended Action=CONTACT_SUPPORT;")
+		statusTrue := v1.ConditionTrue
+		reason := "MultipleRemediationsIsNotHealthy"
+		message := "ErrorCode:31 GPU:0 Recommended Action=CONTACT_SUPPORT;"
+		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, gpuNodeName, "MultipleRemediations", &statusTrue, &reason, &message)
 
 		return ctx
 	})
@@ -181,7 +185,9 @@ func TestRepeatedXIDRule(t *testing.T) {
 			helpers.SendHealthEvent(ctx, t, event)
 		}
 		message = fmt.Sprintf("ErrorCode:%s GPU:0 Recommended Action=CONTACT_SUPPORT;", helpers.ERRORCODE_120)
-		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testCtx.NodeName, "RepeatedXidError", message)
+		statusTrue := v1.ConditionTrue
+		reason := "RepeatedXidErrorIsNotHealthy"
+		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testCtx.NodeName, "RepeatedXidError", &statusTrue, &reason, &message)
 
 		t.Logf("Waiting 12s to create burst gap")
 		time.Sleep(12 * time.Second)
@@ -201,7 +207,9 @@ func TestRepeatedXIDRule(t *testing.T) {
 		t.Logf("Verifying RepeatedXidError condition exists after events merged into Burst 2")
 		message += fmt.Sprintf("ErrorCode:%s GPU:0 Recommended Action=CONTACT_SUPPORT;", helpers.ERRORCODE_119)
 		message += fmt.Sprintf("ErrorCode:%s GPU:0 Recommended Action=CONTACT_SUPPORT;", helpers.ERRORCODE_48)
-		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testCtx.NodeName, "RepeatedXidError", message)
+		statusTrue2 := v1.ConditionTrue
+		reason2 := "RepeatedXidErrorIsNotHealthy"
+		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testCtx.NodeName, "RepeatedXidError", &statusTrue2, &reason2, &message)
 
 		t.Logf("Waiting 12s to create burst gap")
 		time.Sleep(12 * time.Second)
@@ -230,7 +238,9 @@ func TestRepeatedXIDRule(t *testing.T) {
 		}
 
 		message += fmt.Sprintf("ErrorCode:%s GPU:0 Recommended Action=CONTACT_SUPPORT;", helpers.ERRORCODE_31)
-		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testCtx.NodeName, "RepeatedXidError", message)
+		statusTrue3 := v1.ConditionTrue
+		reason3 := "RepeatedXidErrorIsNotHealthy"
+		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testCtx.NodeName, "RepeatedXidError", &statusTrue3, &reason3, &message)
 
 		return ctx
 	})
