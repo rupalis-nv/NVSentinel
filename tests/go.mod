@@ -19,6 +19,7 @@ require (
 	k8s.io/client-go v0.34.2
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/e2e-framework v0.6.0
+	sigs.k8s.io/kwok v0.7.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
