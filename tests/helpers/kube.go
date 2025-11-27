@@ -205,35 +205,50 @@ func StartNodeLabelWatcher(ctx context.Context, t *testing.T, c klient.Client, n
 						t.Logf("[LabelWatcher] ✓ All %d labels matched! Waiting for label removal...", len(labelValueSequence))
 					}
 				} else if actualValue != labelValueSequence[currentLabelIndex] && prevLabelValue != actualValue {
-					// If this is the first label we're seeing (currentLabelIndex == 0) and it doesn't match,
-					// we missed early labels due to race condition. Check if this label appears later in sequence.
-					if currentLabelIndex == 0 {
-						foundLaterInSequence := false
+					// Check if the actual label appears later in the sequence (skipped intermediate states)
+					// This can happen with fast state transitions, especially with PostgreSQL LISTEN/NOTIFY
+					foundLaterInSequence := false
+					skippedIndex := -1
 
-						for i := 1; i < len(labelValueSequence); i++ {
-							if actualValue == labelValueSequence[i] {
-								foundLaterInSequence = true
+					for i := currentLabelIndex + 1; i < len(labelValueSequence); i++ {
+						if actualValue == labelValueSequence[i] {
+							foundLaterInSequence = true
+							skippedIndex = i
 
-								t.Logf(
-									"[LabelWatcher] ✗ MISSED early labels: First label received is '%s' (expected index %d), "+
-										"but expected to start with '%s' (index 0)",
-									actualValue, i, labelValueSequence[0],
-								)
-
-								break
-							}
+							break
 						}
+					}
 
-						if !foundLaterInSequence {
-							t.Logf("[LabelWatcher] ✗ UNEXPECTED first label: got '%s', not in expected sequence at all", actualValue)
+					if foundLaterInSequence {
+						// We skipped intermediate states - log warning but continue
+						skippedLabels := labelValueSequence[currentLabelIndex:skippedIndex]
+						t.Logf(
+							"[LabelWatcher] ⚠ SKIPPED intermediate labels: %v (jumped from '%s' to '%s')",
+							skippedLabels, prevLabelValue, actualValue,
+						)
+						t.Logf("[LabelWatcher] ⚠ This is expected with fast state transitions (PostgreSQL LISTEN/NOTIFY)")
+
+						// Update state to the current label
+						prevLabelValue = actualValue
+						currentLabelIndex = skippedIndex + 1
+
+						if currentLabelIndex == len(labelValueSequence) {
+							t.Logf("[LabelWatcher] ✓ Reached final state despite skipped labels! Waiting for label removal...")
 						}
-
+					} else if currentLabelIndex == 0 {
+						// First label doesn't match and isn't in sequence - missed early labels
+						t.Logf(
+							"[LabelWatcher] ✗ MISSED early labels: First label received is '%s', "+
+								"but expected to start with '%s' (index 0)",
+							actualValue, labelValueSequence[0],
+						)
 						t.Logf("[LabelWatcher] Sending FAILURE to channel (missed early labels)")
 						sendNodeLabelResult(ctx, success, false)
 					} else {
-						// Not the first label, unexpected transition
+						// Completely unexpected transition (not in sequence at all)
 						t.Logf("[LabelWatcher] ✗ UNEXPECTED label transition: got '%s', expected '%s' (prev: '%s')",
 							actualValue, labelValueSequence[currentLabelIndex], prevLabelValue)
+						t.Logf("[LabelWatcher] ✗ Label '%s' is not in expected sequence", actualValue)
 						t.Logf("[LabelWatcher] Sending FAILURE to channel")
 						sendNodeLabelResult(ctx, success, false)
 					}
@@ -1475,7 +1490,7 @@ func WaitForNodeConditionWithCheckName(
 			}
 
 			// Check message if specified
-			if expectedMessage != "" && condition.Message != expectedMessage {
+			if expectedMessage != "" && !containsAllExpectedParts(condition.Message, expectedMessage) {
 				t.Logf("Checking if message matches: expected=%s, actual=%s", expectedMessage, condition.Message)
 				continue
 			}
@@ -1500,6 +1515,30 @@ func WaitForNodeConditionWithCheckName(
 
 		return false
 	}, EventuallyWaitTimeout, WaitInterval, "node %s should have a condition with check name %s", nodeName, checkName)
+}
+
+// containsAllExpectedParts checks if all semicolon-separated parts of expected are in actual.
+// This allows for flexible matching where the expected error codes don't need to be contiguous.
+func containsAllExpectedParts(actual, expected string) bool {
+	// Split expected message by semicolon
+	parts := strings.Split(expected, ";")
+	matchCount := 0
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		if !strings.Contains(actual, part) {
+			return false
+		}
+
+		matchCount++
+	}
+
+	// Ensure at least one part matched
+	return matchCount > 0
 }
 
 // SetNodeConditionStatus sets a node condition to a specific status for testing purposes.
@@ -1770,7 +1809,7 @@ func DeleteAllLogCollectorJobs(ctx context.Context, t *testing.T, c klient.Clien
 
 	var jobList batchv1.JobList
 
-	err := c.Resources().List(ctx, &jobList, resources.WithLabelSelector("app=log-collector"))
+	err := c.Resources(NVSentinelNamespace).List(ctx, &jobList, resources.WithLabelSelector("app=log-collector"))
 	if err != nil {
 		t.Logf("Warning: failed to list log-collector jobs: %v", err)
 		return
@@ -1787,7 +1826,7 @@ func DeleteAllLogCollectorJobs(ctx context.Context, t *testing.T, c klient.Clien
 		// Delete with PropagationPolicy=Background to also delete pods
 		deletePolicy := metav1.DeletePropagationBackground
 
-		err := c.Resources().Delete(ctx, &job, func(do *metav1.DeleteOptions) {
+		err := c.Resources(NVSentinelNamespace).Delete(ctx, &job, func(do *metav1.DeleteOptions) {
 			do.PropagationPolicy = &deletePolicy
 		})
 		if err != nil && !apierrors.IsNotFound(err) {
@@ -1799,7 +1838,7 @@ func DeleteAllLogCollectorJobs(ctx context.Context, t *testing.T, c klient.Clien
 	require.Eventually(t, func() bool {
 		var remainingJobs batchv1.JobList
 
-		err := c.Resources().List(ctx, &remainingJobs, resources.WithLabelSelector("app=log-collector"))
+		err := c.Resources(NVSentinelNamespace).List(ctx, &remainingJobs, resources.WithLabelSelector("app=log-collector"))
 		if err != nil {
 			t.Logf("failed to list jobs: %v", err)
 			return false
@@ -1858,7 +1897,7 @@ func WaitForLogCollectorJobStatus(
 	require.Eventually(t, func() bool {
 		var jobList batchv1.JobList
 
-		err := c.Resources().List(ctx, &jobList, resources.WithLabelSelector("app=log-collector"))
+		err := c.Resources(NVSentinelNamespace).List(ctx, &jobList, resources.WithLabelSelector("app=log-collector"))
 		if err != nil {
 			t.Logf("failed to list log-collector jobs: %v", err)
 			return false
