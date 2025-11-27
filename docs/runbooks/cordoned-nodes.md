@@ -147,7 +147,7 @@ kubectl get nodes -L dgxc.nvidia.com/nvsentinel-state -w
 
 Check fault-quarantine logs to determine why:
 ```bash
-kubectl logs -n nvsentinel deployment/fault-quarantine --tail=200
+kubectl logs -n nvsentinel deployment/fault-quarantine
 ```
 
 If health checks are passing but node remains cordoned, manually uncordon:

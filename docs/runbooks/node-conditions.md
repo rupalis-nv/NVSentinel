@@ -43,14 +43,14 @@ The node was manually uncordoned by an operator. When this annotation exists:
 
 Check Kubernetes audit logs or your organization's access policy to determine who manually uncordoned the node and why.
 
-### 3. Check Fault-Quarantine Configuration
+### 3. Check Fault Quarantine Configuration
 
 If no manual uncordon annotation exists, the health event is likely excluded by CEL rules.
 
 Check the fault-quarantine configuration:
 
 ```bash
-kubectl get configmap fault-quarantine-config -n nvsentinel -o yaml
+kubectl get configmap fault-quarantine -n nvsentinel -o yaml
 ```
 
 Look at the `rule-sets` section. Each ruleset has CEL expressions under `match.all` or `match.any`.
@@ -123,6 +123,6 @@ Note: Manual cordoning won't trigger NVSentinel's remediation flow. For full rem
 Update the fault-quarantine ConfigMap and restart the deployment:
 
 ```bash
-kubectl edit configmap fault-quarantine-config -n nvsentinel
+kubectl edit configmap fault-quarantine -n nvsentinel
 kubectl rollout restart deployment/fault-quarantine -n nvsentinel
 ```
