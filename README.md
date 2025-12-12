@@ -118,11 +118,12 @@ Perfect for learning, presentations, or CI/CD testing!
 NVSentinel follows a microservices architecture with modular health monitors and core processing modules:
 
 ```mermaid
-graph TB
+graph LR
     subgraph "Health Monitors"
         GPU["GPU Health Monitor<br/>(DCGM Integration)"]
         SYS["Syslog Health Monitor<br/>(Journalctl)"]
         CSP["CSP Health Monitor<br/>(CSP APIs)"]
+        K8SOM["Kubernetes Object Monitor<br/>(CEL Policies)"]
     end
     
     subgraph "Core Processing"
@@ -142,7 +143,8 @@ graph TB
     GPU -->|gRPC| PC
     SYS -->|gRPC| PC
     CSP -->|gRPC| PC
-    
+    K8SOM -->|gRPC| PC
+
     PC -->|persist| STORE
     PC <-->|update status| K8S
     
@@ -158,6 +160,8 @@ graph TB
     HEA -.->|watch changes| STORE
     
     LBL -->|update labels| K8S
+
+    K8SOM -.->|watch changes| K8S
 ```
 
 **Data Flow**:
@@ -202,50 +206,6 @@ global:
 - **[Helm Chart Configuration Guide](distros/kubernetes/README.md#configuration)**: Complete configuration reference
 - **[values-full.yaml](distros/kubernetes/nvsentinel/values-full.yaml)**: Detailed reference with all options
 - **[values.yaml](distros/kubernetes/nvsentinel/values.yaml)**: Default values
-
-### Node Metadata Enrichment
-
-Platform Connectors can automatically augment health events with node metadata from Kubernetes, providing additional context for troubleshooting and analytics across clusters.
-
-**Configuration**:
-```yaml
-platformConnector:
-  nodeMetadata:
-    enabled: true 
-    cacheSize: 50 
-    cacheTTLSeconds: 3600 
-    allowedLabels:
-      - "topology.kubernetes.io/zone"
-      - "topology.kubernetes.io/region"
-      - "node.kubernetes.io/instance-type"
-      - "nvidia.com/cuda.driver-version.major"
-      - "nvidia.com/cuda.driver-version.minor"
-      - "nvidia.com/cuda.driver-version.revision"
-      - "nvidia.com/cuda.driver-version.full"
-      - "nvidia.com/cuda.runtime-version.major"
-      - "nvidia.com/cuda.runtime-version.minor"
-      - "nvidia.com/cuda.runtime-version.full"
-      - "topology.k8s.aws/capacity-block-id"
-      - "topology.k8s.aws/network-node-layer-1"
-      - "topology.k8s.aws/network-node-layer-2"
-      - "topology.k8s.aws/network-node-layer-3"
-      - "oci.oraclecloud.com/host.id"
-      - "oci.oraclecloud.com/host.network_block_id"
-      - "oci.oraclecloud.com/host.rack_id"
-      - "oci.oraclecloud.com/host.serial_number"
-      - "cloud.google.com/gce-topology-block"
-      - "cloud.google.com/gce-topology-host"
-      - "cloud.google.com/gce-topology-subblock"
-```
-
-**Metadata Added to Events**:
-- Cloud provider ID (e.g., `aws:///us-west-2a/i-1234567890abcdef0`)
-- Topology labels (zone, region, cloud-specific topology)
-- Instance type information
-- CUDA driver and runtime versions
-- Custom labels as configured
-
-This feature works seamlessly with AWS (EKS), GCP (GKE), Azure (AKS), and OCI (OKE).
 
 ## 📦 Module Details
 
