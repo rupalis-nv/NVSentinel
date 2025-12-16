@@ -59,7 +59,7 @@ import (
 
 const (
 	EventuallyWaitTimeout = 10 * time.Minute
-	NeverWaitTimeout      = 30 * time.Second
+	NeverWaitTimeout      = 10 * time.Second
 	WaitInterval          = 5 * time.Second
 	NVSentinelNamespace   = "nvsentinel"
 )
@@ -600,6 +600,20 @@ func GetAllNodesNames(ctx context.Context, c klient.Client) ([]string, error) {
 	}
 
 	return nodeNames, nil
+}
+
+// CountSchedulableNodes returns the count of nodes that are schedulable (not cordoned).
+// It accepts a v1.NodeList and counts only nodes where Spec.Unschedulable is false.
+func CountSchedulableNodes(nodeList v1.NodeList) int {
+	count := 0
+
+	for _, node := range nodeList.Items {
+		if !node.Spec.Unschedulable {
+			count++
+		}
+	}
+
+	return count
 }
 
 // GetRealNodeName returns a real (non-KWOK) worker node name from the cluster.

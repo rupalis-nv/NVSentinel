@@ -1,3 +1,6 @@
+//go:build amd64_group
+// +build amd64_group
+
 // Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,9 +41,6 @@ func TestMultipleRemediationsCompleted(t *testing.T) {
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 		var newCtx context.Context
 		newCtx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", "")
-
-		t.Log("Waiting 90 seconds for the MultipleRemediations rule time window to complete")
-		time.Sleep(90 * time.Second)
 
 		t.Log("Triggering multiple remediations cycle")
 		client, err := c.NewClient()
@@ -83,16 +83,17 @@ func TestMultipleRemediationsNotTriggered(t *testing.T) {
 	var testCtx *helpers.HealthEventsAnalyzerTestContext
 
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		var newCtx context.Context
-		newCtx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", "")
+		client, err := c.NewClient()
+		require.NoError(t, err)
+		testNodeName := helpers.AcquireNodeFromPool(ctx, t, client, helpers.DefaultExpiry)
 
-		t.Log("Waiting 90 seconds for the MultipleRemediations rule time window to complete")
-		time.Sleep(90 * time.Second)
+		var newCtx context.Context
+		newCtx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", testNodeName)
 
 		gpuNodeName := testCtx.NodeName
 
 		t.Logf("Injecting non-fatal events to node %s", gpuNodeName)
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			event := helpers.NewHealthEvent(gpuNodeName).
 				WithFatal(false).
 				WithErrorCode(helpers.ERRORCODE_13).
@@ -142,13 +143,13 @@ func TestRepeatedXIDOnSameGPU(t *testing.T) {
 	var entitiesImpacted [][]helpers.EntityImpacted
 
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		t.Log("Waiting 190 seconds for the RepeatedXIDErrorOnSameGPU rule time window to complete")
-		time.Sleep(190 * time.Second)
+		client, err := c.NewClient()
+		require.NoError(t, err)
+
+		testNodeName = helpers.AcquireNodeFromPool(ctx, t, client, helpers.DefaultExpiry)
+
 		var newCtx context.Context
-
-		newCtx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", "")
-
-		testNodeName = testCtx.NodeName
+		newCtx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", testNodeName)
 
 		return newCtx
 	})
@@ -173,107 +174,59 @@ func TestRepeatedXIDOnSameGPU(t *testing.T) {
 		// Burst 1: 5 events within 10s gaps (same burst)
 		// Burst 1 contents: XID 119 (x2), 120, 48, 31
 		// Expectations: No trigger yet (need at least 2 bursts to trigger)
-		xidEvents := []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes := []string{helpers.ERRORCODE_119, helpers.ERRORCODE_120, helpers.ERRORCODE_48, helpers.ERRORCODE_119, helpers.ERRORCODE_31}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_119).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_120).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_48).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_119).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		helpers.EnsureNodeConditionNotPresent(ctx, t, client, testNodeName, "RepeatedXIDErrorOnSameGPU")
 
-		t.Log("Waiting 25s to create burst gap")
-		time.Sleep(25 * time.Second)
+		t.Log("Waiting 22s to create burst gap (>20s required)")
+		time.Sleep(22 * time.Second)
 
-		// Burst 2: XID 120 (non-sticky) creates new burst after 12s gap
+		// Burst 2: XID 120 (non-sticky) creates new burst after 22s gap
 		// Burst 2 initial contents: XID 120, 79
 		// Expectations: XID 120 triggers (appears in Burst 1 and Burst 2)
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes = []string{helpers.ERRORCODE_120, helpers.ERRORCODE_79}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_120).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_79).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		message := fmt.Sprintf("ErrorCode:%s PCI:0001:00:00 GPU_UUID:GPU-11111111-1111-1111-1111-111111111111 Recommended Action=CONTACT_SUPPORT;", helpers.ERRORCODE_120)
 		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testNodeName, "RepeatedXIDErrorOnSameGPU",
 			message, "RepeatedXIDErrorOnSameGPUIsNotHealthy", v1.ConditionTrue)
 
-		t.Logf("Waiting 20s to create burst gap")
-		time.Sleep(20 * time.Second)
+		t.Log("Waiting 22s to create burst gap (>20s required)")
+		time.Sleep(22 * time.Second)
 
 		// Burst 2 (continued): XID 119 (sticky) arrives but merges into existing Burst 2
-		// because XID 79 (sticky) occurred 12s ago (within 20s window)
+		// because XID 79 (sticky) occurred 22s ago (within 30s sticky window)
 		// Burst 2 final contents: XID 120, 79, 119, 48
 		// Expectations: 119 and 48 trigger (both appear in Burst 1 and Burst 2)
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes = []string{helpers.ERRORCODE_119, helpers.ERRORCODE_48}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_119).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_48).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		t.Logf("Verifying RepeatedXIDErrorOnSameGPU condition exists after events merged into Burst 2")
@@ -282,31 +235,22 @@ func TestRepeatedXIDOnSameGPU(t *testing.T) {
 		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testNodeName, "RepeatedXIDErrorOnSameGPU",
 			message, "RepeatedXIDErrorOnSameGPUIsNotHealthy", v1.ConditionTrue)
 
-		t.Logf("Waiting 25s to create burst gap")
-		time.Sleep(25 * time.Second)
+		t.Log("Waiting 22s to create burst gap (>20s required)")
+		time.Sleep(22 * time.Second)
 
-		// Burst 3: XID 13 (non-sticky) creates new burst after 25s gap
+		// Burst 3: XID 13 (non-sticky) creates new burst after 16s gap
 		// Burst 3 contents: XID 13, 31
 		// Expectations: XID 31 triggers (appears in Burst 1 and Burst 3)
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes = []string{helpers.ERRORCODE_13, helpers.ERRORCODE_31}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		time.Sleep(5 * time.Second)
@@ -315,19 +259,13 @@ func TestRepeatedXIDOnSameGPU(t *testing.T) {
 		// Burst 3 final contents: XID 13 (x2), 31 (x1)
 		// Expectations: XID 13 will NOT trigger (only appears in Burst 3, and targetXidCount=2 in maxBurst),
 		// 				 XID 31 will also not trigger as we are excluding XID 31 from RepeatedXIDErrorOnSameGPU rule
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
-		}
+		helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
+			WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
+			WithCheckName("SyslogXIDError").
+			WithEntitiesImpacted(entities).
+			WithFatal(true).
+			WithErrorCode(helpers.ERRORCODE_13).
+			WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)))
 
 		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testNodeName, "RepeatedXIDErrorOnSameGPU",
 			message, "RepeatedXIDErrorOnSameGPUIsNotHealthy", v1.ConditionTrue)
@@ -348,6 +286,7 @@ func TestRepeatedXIDOnSameGPU(t *testing.T) {
 
 			helpers.SendHealthEvent(ctx, t, syslogHealthEvent)
 		}
+
 		return helpers.TeardownHealthEventsAnalyzer(ctx, t, c, testNodeName, testCtx.ConfigMapBackup)
 	})
 
@@ -363,12 +302,13 @@ func TestRepeatedXID31OnSameGPU(t *testing.T) {
 	var entitiesImpacted [][]helpers.EntityImpacted
 
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		t.Log("Waiting 190 seconds for the RepeatedXID31OnSameGPU rule time window to complete")
-		time.Sleep(190 * time.Second)
+		client, err := c.NewClient()
+		require.NoError(t, err)
 
-		ctx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", "")
+		testNodeName = helpers.AcquireNodeFromPool(ctx, t, client, helpers.DefaultExpiry)
 
-		testNodeName = testCtx.NodeName
+		ctx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", testNodeName)
+
 		t.Logf("Using node: %s", testNodeName)
 
 		return ctx
@@ -406,46 +346,36 @@ func TestRepeatedXID31OnSameGPU(t *testing.T) {
 		// Burst 1: 5 events within 10s gaps (same burst)
 		// Burst 1 contents: XID 119, 31
 		// Expectations: No trigger yet (need at least 2 bursts to trigger)
-		xidEvents := []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes := []string{helpers.ERRORCODE_119, helpers.ERRORCODE_31}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities1).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_119).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities1).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		helpers.EnsureNodeConditionNotPresent(ctx, t, client, testNodeName, "RepeatedXID31OnDifferentGPU")
 
-		t.Log("Waiting 25s to create burst gap")
-		time.Sleep(25 * time.Second)
+		t.Log("Waiting 22s to create burst gap (>20s required)")
+		time.Sleep(22 * time.Second)
 
 		// Burst 2: XID 31 (non-sticky) creates new burst after 25s gap
 		// Burst 2 initial contents: XID 31
 		// Expectations: XID 31 triggers (appears in Burst 1 and Burst 2 but with different PCI addresses)
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes = []string{helpers.ERRORCODE_31}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities2).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		expectedEvent := v1.Event{
@@ -458,31 +388,22 @@ func TestRepeatedXID31OnSameGPU(t *testing.T) {
 
 		helpers.EnsureNodeConditionNotPresent(ctx, t, client, testNodeName, "RepeatedXID31OnSameGPU")
 
-		t.Logf("Waiting 25s to create burst gap")
-		time.Sleep(25 * time.Second)
+		t.Log("Waiting 22s to create burst gap (>20s required)")
+		time.Sleep(22 * time.Second)
 
-		// Burst 3: XID 13 (non-sticky) creates new burst after 25s gap
+		// Burst 3: XID 13 (non-sticky) creates new burst after 16s gap
 		// Burst 3 contents: XID 13, 31
 		// Expectations: XID 31 triggers (appears in Burst 1 and Burst 3)
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes = []string{helpers.ERRORCODE_13, helpers.ERRORCODE_31}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities1).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities1).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		message := fmt.Sprintf("ErrorCode:%s PCI:0001:00:00 GPU_UUID:GPU-11111111-1111-1111-1111-111111111111 if DCGM EUD tests pass, run field diagnostics Recommended Action=RUN_DCGMEUD;", helpers.ERRORCODE_31)
@@ -520,15 +441,13 @@ func TestRepeatedXID31OnDifferentGPU(t *testing.T) {
 	var entitiesImpacted [][]helpers.EntityImpacted
 
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		t.Log("Waiting 70 seconds for the RepeatedXID31OnDifferentGPU rule time window to complete")
-		time.Sleep(70 * time.Second)
-
 		client, err := c.NewClient()
-		assert.NoError(t, err, "failed to create client")
+		require.NoError(t, err)
 
-		ctx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", "")
+		// Acquire a fresh node from pool (no prior events, no time window wait needed!)
+		testNodeName = helpers.AcquireNodeFromPool(ctx, t, client, helpers.DefaultExpiry)
 
-		testNodeName = testCtx.NodeName
+		ctx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", testNodeName)
 		t.Logf("Using node: %s", testNodeName)
 
 		entities1 := []helpers.EntityImpacted{
@@ -555,45 +474,31 @@ func TestRepeatedXID31OnDifferentGPU(t *testing.T) {
 		entitiesImpacted = append(entitiesImpacted, entities1)
 		entitiesImpacted = append(entitiesImpacted, entities2)
 
-		xidEvents := []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes := []string{helpers.ERRORCODE_13, helpers.ERRORCODE_31}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities1).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities1).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		helpers.EnsureNodeConditionNotPresent(ctx, t, client, testNodeName, "RepeatedXID31OnDifferentGPU")
 
-		t.Log("Waiting 5s to create burst gap")
-		time.Sleep(5 * time.Second)
+		t.Log("Waiting 22s to create burst gap (>20s required)")
+		time.Sleep(22 * time.Second)
 
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities2).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
-		}
+		helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
+			WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
+			WithCheckName("SyslogXIDError").
+			WithEntitiesImpacted(entities2).
+			WithFatal(true).
+			WithErrorCode(helpers.ERRORCODE_31).
+			WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
+		)
 
 		return ctx
 	})
@@ -641,9 +546,6 @@ func TestXIDErrorOnGPCAndTPC(t *testing.T) {
 	var entitiesImpacted [][]helpers.EntityImpacted
 
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		t.Log("Waiting 190 seconds for the RepeatedXID13OnSameGPCAndTPC rule time window to complete")
-		time.Sleep(190 * time.Second)
-
 		client, err := c.NewClient()
 		assert.NoError(t, err, "failed to create client")
 
@@ -742,7 +644,7 @@ func TestXIDErrorOnGPCAndTPC(t *testing.T) {
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities1).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_31).
+				WithErrorCode(helpers.ERRORCODE_13).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
 		}
 
@@ -785,20 +687,22 @@ func TestXIDErrorOnGPCAndTPC(t *testing.T) {
 
 		// EXPECTED: RepeatedXID13OnSameGPCAndTPC is not present.
 		// Burst 1: XID 13 on GPC: 0, TPC: 1, SM: 0
-		//          XID 13 on GPC: 0, TPC: 0, SM: 1
-		// Errors 1 and 2 are combined into a single burst and thus counted only once.
+		//          XID 13 on GPC: 0, TPC: 1, SM: 0
+		// Burst 2: XID 13 on GPC: 0, TPC: 0, SM: 1
+		// Errors on different GPC/TPC combinations.
 		helpers.EnsureNodeConditionNotPresent(ctx, t, client, testNodeName, "RepeatedXID13OnSameGPCAndTPC")
 
 		t.Log("Waiting 5s to create burst gap")
 		time.Sleep(5 * time.Second)
 
 		// STEP 3: Inject XID 13 error on GPC:0, TPC:1, SM:1
-		// EXPECTED: Now we have errors on two different GPC/TPC combinations:
-		//   - GPC:0, TPC:0 (from Step 2)
-		//   - GPC:0, TPC:1 (from Step 3)
-		// This should trigger the "RepeatedXID13OnDifferentGPCAndTPC" condition
-		// because we have errors occurring on different processing clusters, indicating
-		// a potentially broader GPU issue rather than a localized problem.
+		// EXPECTED: This creates a third burst on GPC:0, TPC:1, the same GPC/TPC as Burst 1.
+		// Now we have:
+		//   Burst 1: GPC:0, TPC:1
+		//   Burst 2: GPC:0, TPC:0
+		//   Burst 3: GPC:0, TPC:1
+		// This should trigger the "RepeatedXID13OnDifferentGPCAndTPC" condition (bursts on different GPC/TPC)
+		// and also set up the condition for "RepeatedXID13OnSameGPCAndTPC" (bursts 1 and 3 on same GPC/TPC).
 		t.Log("Inject XID 13 events on GPC: 0, TPC: 1, SM: 1")
 		xidEvents = []*helpers.HealthEventTemplate{
 			helpers.NewHealthEvent(testNodeName).
@@ -830,11 +734,11 @@ func TestXIDErrorOnGPCAndTPC(t *testing.T) {
 		require.NoError(t, err)
 
 		// EXPECTED: RepeatedXID13OnSameGPCAndTPC is present.
-		// Even though we have injected three errors on the same GPC = 0, TPC = 1,
-		// Burst 1: XID 13 on GPC: 0, TPC: 1, SM: 0
-		//          XID 13 on GPC: 0, TPC: 1, SM: 0
-		// Burst 3: XID 13 on GPC: 0, TPC: 1, SM: 1
-		// Errors 1 and 2 are combined into a single burst and thus counted only once.
+		// We have injected XID 13 errors in three separate bursts (>20s gaps):
+		// Burst 1: XID 13 on GPC: 0, TPC: 1, SM: 0 (two events combined)
+		// Burst 2: XID 13 on GPC: 0, TPC: 0, SM: 1 (different TPC)
+		// Burst 3: XID 13 on GPC: 0, TPC: 1, SM: 1 (same GPC/TPC as Burst 1)
+		// Bursts 1 and 3 both occur on GPC:0, TPC:1, triggering the rule.
 		message := "ErrorCode:13 PCI:0001:00:00 GPU_UUID:GPU-11111111-1111-1111-1111-111111111111 GPC:0 TPC:1 SM:1 if DCGM EUD tests pass, run field diagnostics Recommended Action=RUN_DCGMEUD;"
 		helpers.WaitForNodeConditionWithCheckName(ctx, t, client, testNodeName, "RepeatedXID13OnSameGPCAndTPC",
 			message, "RepeatedXID13OnSameGPCAndTPCIsNotHealthy", v1.ConditionTrue)
@@ -870,12 +774,12 @@ func TestSoloNoBurstRule(t *testing.T) {
 	var entitiesImpacted [][]helpers.EntityImpacted
 
 	feature.Setup(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
-		t.Log("Waiting 70 seconds for the XIDErrorSoloNoBurst rule time window to complete")
-		time.Sleep(70 * time.Second)
+		client, err := c.NewClient()
+		require.NoError(t, err)
 
-		ctx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", "")
+		testNodeName = helpers.AcquireNodeFromPool(ctx, t, client, helpers.DefaultExpiry)
 
-		testNodeName = testCtx.NodeName
+		ctx, testCtx = helpers.SetupHealthEventsAnalyzerTest(ctx, t, c, "data/health-events-analyzer-config.yaml", "health-events-analyzer-test", testNodeName)
 		t.Logf("Using node: %s", testNodeName)
 
 		entities1 := []helpers.EntityImpacted{
@@ -915,43 +819,28 @@ func TestSoloNoBurstRule(t *testing.T) {
 		entitiesImpacted = append(entitiesImpacted, entities1)
 		entitiesImpacted = append(entitiesImpacted, entities2)
 
-		xidEvents := []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
+		errorCodes := []string{helpers.ERRORCODE_13, helpers.ERRORCODE_13}
+		for _, errorCode := range errorCodes {
+			helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
 				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
 				WithCheckName("SyslogXIDError").
 				WithEntitiesImpacted(entities1).
 				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
+				WithErrorCode(errorCode).
 				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities1).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
+			)
 		}
 
 		t.Log("Waiting 5s to create burst gap")
 		time.Sleep(5 * time.Second)
 
-		xidEvents = []*helpers.HealthEventTemplate{
-			helpers.NewHealthEvent(testNodeName).
-				WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
-				WithCheckName("SyslogXIDError").
-				WithEntitiesImpacted(entities2).
-				WithFatal(true).
-				WithErrorCode(helpers.ERRORCODE_13).
-				WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)),
-		}
-
-		for _, xidEvent := range xidEvents {
-			helpers.SendHealthEvent(ctx, t, xidEvent)
-		}
+		helpers.SendHealthEvent(ctx, t, helpers.NewHealthEvent(testNodeName).
+			WithAgent(helpers.SYSLOG_HEALTH_MONITOR_AGENT).
+			WithCheckName("SyslogXIDError").
+			WithEntitiesImpacted(entities2).
+			WithFatal(true).
+			WithErrorCode(helpers.ERRORCODE_13).
+			WithRecommendedAction(int(pb.RecommendedAction_RESTART_VM)))
 
 		return ctx
 	})

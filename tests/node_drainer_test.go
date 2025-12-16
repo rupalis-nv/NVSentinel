@@ -1,3 +1,6 @@
+//go:build amd64_group
+// +build amd64_group
+
 // Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -130,7 +133,7 @@ func TestNodeDrainerEvictionModes(t *testing.T) {
 		helpers.WaitForPodsDeleted(ctx, t, client, "allowcompletion-test", allowCompletionPods)
 
 		t.Log("Phase 3: Waiting for deleteAfterTimeout to expire (~40s remaining)")
-		time.Sleep(45 * time.Second)
+		time.Sleep(35 * time.Second)
 
 		t.Log("Phase 3: DeleteAfterTimeout pods force-deleted after timeout")
 		helpers.WaitForPodsDeleted(ctx, t, client, "delete-timeout-test", deleteTimeoutPods)
