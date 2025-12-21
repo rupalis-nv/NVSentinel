@@ -184,7 +184,7 @@ func NewDatabaseConfigWithCollection(
 ) (DatabaseConfig, error) {
 	// Check if using PostgreSQL datastore - if so, delegate to datastore config
 	if provider := os.Getenv("DATASTORE_PROVIDER"); provider == "postgresql" {
-		return newPostgreSQLCompatibleConfig(certMountPath)
+		return newPostgreSQLCompatibleConfig(certMountPath, collectionEnvVar, defaultCollection)
 	}
 
 	// Load required MongoDB environment variables
@@ -239,7 +239,7 @@ func NewDatabaseConfigWithCollection(
 // using DATASTORE_* environment variables instead of MONGODB_* variables
 //
 //nolint:cyclop // Config validation requires checking multiple environment variables
-func newPostgreSQLCompatibleConfig(certMountPath string) (DatabaseConfig, error) {
+func newPostgreSQLCompatibleConfig(certMountPath, tableEnvVar, defaultTable string) (DatabaseConfig, error) {
 	host := os.Getenv("DATASTORE_HOST")
 	if host == "" {
 		return nil, fmt.Errorf("required environment variable DATASTORE_HOST is not set")
@@ -286,10 +286,20 @@ func newPostgreSQLCompatibleConfig(certMountPath string) (DatabaseConfig, error)
 	connectionURI := fmt.Sprintf("host=%s port=%s dbname=%s user=%s sslmode=%s sslcert=%s sslkey=%s sslrootcert=%s",
 		host, port, database, username, sslmode, sslcert, sslkey, sslrootcert)
 
-	// Use health_events as the default collection for PostgreSQL
-	collectionName := os.Getenv("MONGODB_COLLECTION_NAME")
-	if collectionName == "" {
-		collectionName = "health_events"
+	// Determine table name using the provided parameters
+	// For PostgreSQL, this maps to the table name (converted to snake_case by the client)
+	tableEnvName := tableEnvVar
+	if tableEnvName == "" {
+		tableEnvName = EnvMongoDBCollectionName
+	}
+
+	tableName := os.Getenv(tableEnvName)
+	if tableName == "" {
+		if defaultTable != "" {
+			tableName = defaultTable
+		} else {
+			return nil, fmt.Errorf("required environment variable %s is not set", tableEnvName)
+		}
 	}
 
 	// Load timeout configuration
@@ -307,7 +317,7 @@ func newPostgreSQLCompatibleConfig(certMountPath string) (DatabaseConfig, error)
 	return &StandardDatabaseConfig{
 		connectionURI:  connectionURI,
 		databaseName:   database,
-		collectionName: collectionName,
+		collectionName: tableName,
 		certConfig:     certConfig,
 		timeoutConfig:  timeoutConfig,
 	}, nil
