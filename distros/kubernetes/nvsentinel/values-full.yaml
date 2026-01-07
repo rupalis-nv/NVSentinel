@@ -314,6 +314,7 @@ platformConnector:
         - "topology.kubernetes.io/zone"
         - "topology.kubernetes.io/region"
         - "node.kubernetes.io/instance-type"
+        - "nvidia.com/gpu.product"
         - "nvidia.com/cuda.driver-version.major"
         - "nvidia.com/cuda.driver-version.minor"
         - "nvidia.com/cuda.driver-version.revision"
