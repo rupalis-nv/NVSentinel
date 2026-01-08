@@ -12,20 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-image:
-  repository: ghcr.io/nvidia/nvsentinel/metadata-collector
-  pullPolicy: IfNotPresent
-  tag: ""
-
-podAnnotations: {}
-
-resources: 
-  limits:
-    cpu: 500m
-    memory: 256Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-# Runtime class name for the pod. If empty or not set, the field will be omitted.
-runtimeClassName: "nvidia"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "metadata-collector.fullname" . }}
+  labels:
+    {{- include "metadata-collector.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "metadata-collector.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "metadata-collector.fullname" . }}
+    namespace: {{ .Release.Namespace }}
