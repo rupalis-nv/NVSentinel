@@ -70,6 +70,8 @@ global:
     enabled: false
   janitor:
     enabled: false
+  janitorProvider:
+    enabled: false
   cspHealthMonitor:
     enabled: false
   syslogHealthMonitor:

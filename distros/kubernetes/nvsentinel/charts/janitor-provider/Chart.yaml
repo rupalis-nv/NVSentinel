@@ -11,13 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "janitor.serviceAccountName" . }}
-  labels:
-    {{- include "janitor.labels" . | nindent 4 }}
-  annotations:
-    {{- with .Values.serviceAccount.annotations }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+
+apiVersion: v2
+name: janitor-provider
+description: Example provider for NVSentinel Janitor
+type: application
+version: 0.1.0

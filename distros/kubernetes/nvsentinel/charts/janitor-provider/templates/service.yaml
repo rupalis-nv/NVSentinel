@@ -12,12 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 apiVersion: v1
-kind: ServiceAccount
+kind: Service
 metadata:
-  name: {{ include "janitor.serviceAccountName" . }}
+  name: {{ include "provider.fullname" . }}
   labels:
-    {{- include "janitor.labels" . | nindent 4 }}
-  annotations:
-    {{- with .Values.serviceAccount.annotations }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- include "provider.labels" . | nindent 4}}
+spec:
+  type: {{ .Values.service.type | default "ClusterIP" }}
+  selector:
+    {{- include "provider.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: service
+      port: {{ .Values.service.port | default 50051 }}
+      targetPort: {{ .Values.service.port | default 50051 }}
+    - name: metrics
+      port: {{ ((.Values.global).metricsPort) | default 2112 }}
+      targetPort: {{ ((.Values.global).metricsPort) | default 2112 }}

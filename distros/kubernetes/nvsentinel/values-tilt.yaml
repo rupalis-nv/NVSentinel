@@ -77,6 +77,9 @@ global:
   janitor:
     enabled: true
 
+  janitorProvider:
+    enabled: true
+
   mongodbStore:
     enabled: true
 
@@ -318,8 +321,13 @@ health-events-analyzer:
         topologyKey: kubernetes.io/hostname
 
 janitor:
+  config:
+    cspProviderHost: "janitor-provider.nvsentinel.svc.cluster.local:50051"
   webhook:
     certIssuer: "janitor-selfsigned-issuer"
+
+janitorProvider:
+  csp: kind
 
 labeler:
   logLevel: debug
