@@ -100,6 +100,8 @@ config:
   # Global timeout - used as default for controllers that don't specify their own timeout
   # Should be set to a reasonable default that works for most operations
   timeout: "25m"
+  # host where the provider is running
+  cspProviderHost: "janitor-provider.nvsentinel.svc.cluster.local:50051"
   # Manual mode - if true, controllers won't send actual reboot/terminate signals
   manualMode: false
   # HTTP endpoint port for exposing runtime configuration
