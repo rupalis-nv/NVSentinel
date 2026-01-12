@@ -384,6 +384,30 @@ func WaitForNodeEvent(ctx context.Context, t *testing.T, c klient.Client, nodeNa
 	}, EventuallyWaitTimeout, WaitInterval, "node %s should have event %v", nodeName, expectedEvent)
 }
 
+func EnsureNodeEventNotPresent(ctx context.Context, t *testing.T,
+	c klient.Client, nodeName string, eventType, eventReason string) {
+	t.Helper()
+
+	require.Never(t, func() bool {
+		events, err := GetNodeEvents(ctx, c, nodeName, eventType)
+		if err != nil {
+			t.Logf("failed to get events for node %s: %v", nodeName, err)
+			return false
+		}
+
+		for _, event := range events.Items {
+			if event.Type == eventType && event.Reason == eventReason {
+				t.Logf("node %s has event %v", nodeName, event)
+				return true
+			}
+		}
+
+		t.Logf("node %s does not have event %v", nodeName, eventType)
+
+		return false
+	}, NeverWaitTimeout, WaitInterval, "node %s should not have event %v", nodeName, eventType)
+}
+
 // SelectTestNodeFromUnusedPool selects an available test node from the cluster.
 // Prefers uncordoned nodes but will fall back to the first node if none are available.
 func SelectTestNodeFromUnusedPool(ctx context.Context, t *testing.T, client klient.Client) string {
