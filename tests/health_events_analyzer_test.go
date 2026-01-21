@@ -1678,6 +1678,8 @@ func TestHealthEventsAnalyzerProcessingStrategyRuleOverride(t *testing.T) {
 	})
 
 	feature.Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+		helpers.SendHealthyEvent(ctx, t, testCtx.NodeName)
+
 		return helpers.TeardownHealthEventsAnalyzer(ctx, t, c, testCtx.NodeName, testCtx.ConfigMapBackup)
 	})
 
