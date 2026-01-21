@@ -232,7 +232,10 @@ func TeardownHealthEventsAnalyzer(ctx context.Context, t *testing.T,
 
 	clearHealthEventsAnalyzerConditions(ctx, t, nodeName)
 
-	restoreHealthEventsAnalyzerConfig(ctx, t, c, configMapBackup)
+	if configMapBackup != nil {
+		t.Log("Restoring health-events-analyzer configmap from memory")
+		restoreHealthEventsAnalyzerConfig(ctx, t, c, configMapBackup)
+	}
 
 	return ctx
 }
