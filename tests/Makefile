@@ -70,6 +70,7 @@ test: ## Run end-to-end tests (USE_POSTGRESQL=1 excludes MongoDB-only tests)
 	@echo "Running end-to-end tests on $(MODULE_NAME) with tags: $(TEST_TAGS)..."
 	$(GOTESTSUM) --format standard-verbose -- -tags=$(TEST_TAGS) $(TEST_EXTRA_FLAGS) ./... -coverprofile=coverage.txt -covermode atomic -coverpkg=github.com/nvidia/nvsentinel/$(MODULE_NAME)/...
 
+
 # =============================================================================
 # MODULE HELP
 # =============================================================================
