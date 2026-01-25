@@ -157,6 +157,10 @@ func (m *mockDatabaseConfig) GetTimeoutConfig() sdkconfig.TimeoutConfig {
 	return &mockTimeoutConfig{}
 }
 
+func (m *mockDatabaseConfig) GetAppName() string {
+	return "node-drainer"
+}
+
 // mockCertConfig is a simple mock implementation for testing
 type mockCertConfig struct{}
 
