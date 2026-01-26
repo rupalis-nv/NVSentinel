@@ -176,6 +176,8 @@ class PlatformConnectorEventProcessor(dcgmtypes.CallbackInterface):
                                 platformconnector_pb2.Entity(entityType="GPU_UUID", entityValue=gpu_uuid)
                             )
 
+                        entities_impacted_supports_component_reset = pci_address and gpu_uuid
+
                         key = self._build_cache_key(check_name, entity.entityType, entity.entityValue)
                         isFatal = False
                         isHealthy = True
@@ -197,6 +199,27 @@ class PlatformConnectorEventProcessor(dcgmtypes.CallbackInterface):
                             # Defer cache update until after successful send
                             pending_cache_updates[key] = CachedEntityState(isFatal=isFatal, isHealthy=isHealthy)
                             recommended_action = self.get_recommended_action_from_dcgm_error_map(failure_details.code)
+
+                            # The COMPONENT_RESET recommended action requires that the GPU_UUID is present on the
+                            # unhealthy HealthEvent. Sending an event with COMPONENT_RESET that is missing the GPU_UUID
+                            # impacted entity will result in a failed partial drain in node-drainer (as well as a
+                            # failed remediation in fault-remediation). As a result, we are checking that the GPU_UUID
+                            # can be read from the MetadataReader and are falling back to the RESTART_VM action if it
+                            # is not present on the event.
+
+                            # Note that entity-specific HealthEvents require an exact match for the set of impacted
+                            # entities between the initial unhealthy event and the eventual healthy event which clears
+                            # it in fault-quarantine. To ensure that there's a consistent view of impacted
+                            # entities between healthy and unhealthy events, we will only send unhealthy HealthEvents
+                            # for COMPONENT_RESET which include the GPU index, PCI, and GPU_UUID (and the corresponding
+                            # HealthyEvent will include all of these as long as there's no failure extracting the PCI
+                            # or GPU_UUID from the MetadataReader).
+                            if (
+                                recommended_action == platformconnector_pb2.COMPONENT_RESET
+                                and not entities_impacted_supports_component_reset
+                            ):
+                                log.info(f"Overriding action from COMPONENT_RESET to RESTART_VM for {self._node_name}")
+                                recommended_action = platformconnector_pb2.RESTART_VM
 
                             event_metadata = {}
                             chassis_serial = self._metadata_reader.get_chassis_serial()
