@@ -12,16 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Bootstrap self-signed issuer - only used to create the CA certificate
-{{- if and .Values.webhook.createIssuer (ne .Values.webhook.certProvider "openshift-service-ca") }}
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: {{ include "preflight.fullname" . }}-selfsigned
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "preflight.labels" . | nindent 4 }}
-spec:
-  selfSigned: {}
-{{- end }}
-
+docker_build(
+    "ghcr.io/nvidia/nvsentinel/nic-health-monitor",
+    context="../..",
+    dockerfile="./Dockerfile",
+)
