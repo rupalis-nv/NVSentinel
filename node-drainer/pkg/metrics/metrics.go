@@ -119,6 +119,15 @@ var (
 		},
 	)
 
+	// QueueItemsAssigned tracks priority decisions made when events enter the ready queue
+	QueueItemsAssigned = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "node_drainer_queue_items_assigned_total",
+			Help: "Total number of ready queue items assigned by priority and reason.",
+		},
+		[]string{"priority", "reason"},
+	)
+
 	// CustomDrainCRDNotFound tracks failures when custom drain CRD is not found
 	CustomDrainCRDNotFound = promauto.NewCounterVec(
 		prometheus.CounterOpts{

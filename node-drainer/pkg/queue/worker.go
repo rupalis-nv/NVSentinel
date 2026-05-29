@@ -73,7 +73,10 @@ func (m *eventQueueManager) processNextWorkItem(ctx context.Context) bool {
 		return false
 	}
 
-	defer m.queue.Done(nodeEvent)
+	defer func() {
+		m.priorityState.releaseRepresentative(nodeEvent)
+		m.queue.Done(nodeEvent)
+	}()
 
 	if nodeEvent.Database == nil || nodeEvent.HealthEventStore == nil {
 		slog.ErrorContext(ctx, "NodeEvent missing database or health event store, dropping",
