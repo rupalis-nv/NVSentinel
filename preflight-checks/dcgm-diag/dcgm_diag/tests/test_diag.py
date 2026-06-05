@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dcgm_diag.diag import DCGMDiagnostic
+from dcgm_diag.diag import DCGMDiagnostic, DiagnosticStatusError, get_dcgm_status_name
 
 from .conftest import (
     MockDCGMEntityResult,
@@ -28,8 +28,30 @@ from .conftest import (
 )
 
 
+class MockDCGMError(Exception):
+    def __init__(self, value: int, message: str = "") -> None:
+        super().__init__(message)
+        self.value = value
+
+
 class TestDCGMDiagnosticConnect:
     """Tests for DCGM connection handling."""
+
+    @pytest.mark.parametrize("max_attempts", [0, -1, 1.5, "3"])
+    @patch("dcgm_diag.diag.GPUDiscovery")
+    def test_rejects_invalid_status_retry_max_attempts(
+        self, mock_gpu_discovery_class: MagicMock, max_attempts: object
+    ) -> None:
+        with pytest.raises(ValueError, match="status_retry_max_attempts must be an integer >= 1"):
+            DCGMDiagnostic(hostengine_addr="localhost:5555", status_retry_max_attempts=max_attempts)
+
+    @pytest.mark.parametrize("interval_seconds", [0, -1, "10"])
+    @patch("dcgm_diag.diag.GPUDiscovery")
+    def test_rejects_invalid_status_retry_interval(
+        self, mock_gpu_discovery_class: MagicMock, interval_seconds: object
+    ) -> None:
+        with pytest.raises(ValueError, match="status_retry_interval_seconds must be a positive number"):
+            DCGMDiagnostic(hostengine_addr="localhost:5555", status_retry_interval_seconds=interval_seconds)
 
     @patch("dcgm_diag.diag.GPUDiscovery")
     def test_disconnect_handles_shutdown_exception(self, mock_gpu_discovery_class: MagicMock) -> None:
@@ -226,3 +248,138 @@ class TestDCGMDiagnosticRun:
         mock_group.AddGpu.assert_any_call(0)
         mock_group.AddGpu.assert_any_call(1)
         mock_group.AddGpu.assert_any_call(2)
+
+    @patch("dcgm_diag.diag.sleep")
+    @patch("dcgm_diag.diag.dcgm_agent.dcgmStopDiagnostic")
+    @patch("dcgm_diag.diag.GPUDiscovery")
+    @patch("dcgm_diag.diag.pydcgm.DcgmGroup")
+    def test_retries_when_diagnostic_resource_is_in_use(
+        self,
+        mock_group_class: MagicMock,
+        mock_gpu_discovery_class: MagicMock,
+        mock_stop_diagnostic: MagicMock,
+        mock_sleep: MagicMock,
+    ) -> None:
+        """Resource-in-use errors should wait and retry until the diagnostic can run."""
+        mock_discovery = MagicMock()
+        mock_discovery.get_allocated_gpus.return_value = [0]
+        mock_gpu_discovery_class.return_value = mock_discovery
+
+        response = MockDCGMStructs.c_dcgmDiagResponse_v12()
+        mock_group = MagicMock()
+        mock_group.action.RunDiagnostic.side_effect = [
+            MockDCGMError(
+                dcgm_structs_mock.DCGM_ST_IN_USE,
+                "The requested operation could not be completed because the affected resource is in use",
+            ),
+            response,
+        ]
+        mock_group_class.return_value = mock_group
+
+        diag = DCGMDiagnostic(
+            hostengine_addr="localhost:5555",
+            status_retry_max_attempts=2,
+            status_retry_interval_seconds=2,
+        )
+        diag._handle = MagicMock()
+
+        results = diag._run_diagnostic(level=1)
+
+        assert results == []
+        assert mock_group.action.RunDiagnostic.call_count == 2
+        mock_stop_diagnostic.assert_not_called()
+        mock_sleep.assert_called_once_with(2)
+
+    @patch("dcgm_diag.diag.sleep")
+    @patch("dcgm_diag.diag.dcgm_agent.dcgmStopDiagnostic")
+    @patch("dcgm_diag.diag.GPUDiscovery")
+    @patch("dcgm_diag.diag.pydcgm.DcgmGroup")
+    def test_raises_status_error_after_retry_timeout(
+        self,
+        mock_group_class: MagicMock,
+        mock_gpu_discovery_class: MagicMock,
+        mock_stop_diagnostic: MagicMock,
+        mock_sleep: MagicMock,
+    ) -> None:
+        """Persistent DCGM_ST_* errors should be classified distinctly."""
+        mock_discovery = MagicMock()
+        mock_discovery.get_allocated_gpus.return_value = [0]
+        mock_gpu_discovery_class.return_value = mock_discovery
+
+        mock_group = MagicMock()
+        mock_group.action.RunDiagnostic.side_effect = MockDCGMError(dcgm_structs_mock.DCGM_ST_TIMEOUT, "Timeout")
+        mock_group_class.return_value = mock_group
+
+        diag = DCGMDiagnostic(
+            hostengine_addr="localhost:5555",
+            status_retry_max_attempts=4,
+            status_retry_interval_seconds=2,
+        )
+        diag._handle = MagicMock()
+
+        with pytest.raises(DiagnosticStatusError, match="DCGM_ST_TIMEOUT") as exc_info:
+            diag._run_diagnostic(level=1)
+
+        assert exc_info.value.status_name == "DCGM_ST_TIMEOUT"
+        assert (
+            str(exc_info.value)
+            == "DCGM diagnostic returned DCGM_ST_TIMEOUT after 4 attempts; diagnostic did not complete"
+        )
+        assert "\n" not in str(exc_info.value)
+        assert mock_group.action.RunDiagnostic.call_count == 4
+        mock_stop_diagnostic.assert_not_called()
+        assert mock_sleep.call_count == 3
+        assert [call.args[0] for call in mock_sleep.call_args_list] == [2, 2, 2]
+
+    @patch("dcgm_diag.diag.dcgm_agent.dcgmStopDiagnostic")
+    @patch("dcgm_diag.diag.GPUDiscovery")
+    @patch("dcgm_diag.diag.pydcgm.DcgmGroup")
+    def test_stops_stale_diagnostic_then_runs_after_retry_timeout(
+        self,
+        mock_group_class: MagicMock,
+        mock_gpu_discovery_class: MagicMock,
+        mock_stop_diagnostic: MagicMock,
+    ) -> None:
+        """After the wait budget is exhausted, stop the stale diagnostic and try to run."""
+        mock_discovery = MagicMock()
+        mock_discovery.get_allocated_gpus.return_value = [0]
+        mock_gpu_discovery_class.return_value = mock_discovery
+
+        response = MockDCGMStructs.c_dcgmDiagResponse_v12()
+        mock_group = MagicMock()
+        mock_group.action.RunDiagnostic.side_effect = [
+            MockDCGMError(dcgm_structs_mock.DCGM_ST_DIAG_ALREADY_RUNNING, "A diag instance is already running"),
+            response,
+        ]
+        mock_group_class.return_value = mock_group
+
+        diag = DCGMDiagnostic(
+            hostengine_addr="localhost:5555",
+            status_retry_max_attempts=1,
+            status_retry_interval_seconds=2,
+        )
+        diag._handle = MagicMock()
+
+        results = diag._run_diagnostic(level=1)
+
+        assert results == []
+        assert mock_group.action.RunDiagnostic.call_count == 2
+        mock_stop_diagnostic.assert_called_once()
+
+
+class TestDCGMStatusDetection:
+    def test_detects_dcgm_status_from_exception_value(self) -> None:
+        err = MockDCGMError(dcgm_structs_mock.DCGM_ST_IN_USE)
+
+        assert get_dcgm_status_name(err) == "DCGM_ST_IN_USE"
+
+    @pytest.mark.parametrize(
+        "err",
+        [
+            Exception("DCGM_ST_DIAG_ALREADY_RUNNING"),
+            Exception("The requested operation could not be completed because the affected resource is in use"),
+            Exception("DCGM hostengine connection failed"),
+        ],
+    )
+    def test_ignores_untyped_errors(self, err: Exception) -> None:
+        assert get_dcgm_status_name(err) == ""
