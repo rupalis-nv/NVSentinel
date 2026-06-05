@@ -21,6 +21,19 @@ image:
 
 imagePullSecrets: []
 
+imageCache:
+  # Enables a DaemonSet that keeps all configured preflight check images
+  # running on matching nodes so kubelet considers them in use.
+  enabled: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+  podAnnotations: {}
+
 serviceAccount:
   create: true
   annotations: {}
