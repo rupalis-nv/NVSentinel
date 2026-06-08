@@ -60,7 +60,7 @@ func TestPreflightEndToEnd(t *testing.T) {
 		return newCtx
 	})
 
-	feature.Assess("webhook injected preflight-dcgm-diag on both pods",
+	feature.Assess("webhook injected per-container inheritance config on both pods",
 		func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 			client, err := c.NewClient()
 			require.NoError(t, err)
@@ -81,9 +81,28 @@ func TestPreflightEndToEnd(t *testing.T) {
 				require.NotEmpty(t, initNames,
 					"pod %s should have init containers", podName)
 				require.Contains(t, initNames,
-					helpers.PreflightDCGMDiagName,
+					helpers.PreflightInheritEnabledName,
 					"pod %s missing %s in %v",
-					podName, helpers.PreflightDCGMDiagName, initNames)
+					podName, helpers.PreflightInheritEnabledName, initNames)
+				require.Contains(t, initNames,
+					helpers.PreflightInheritDisabledName,
+					"pod %s missing %s in %v",
+					podName, helpers.PreflightInheritDisabledName, initNames)
+
+				enabled := helpers.RequireInitContainer(t, pod, helpers.PreflightInheritEnabledName)
+				disabled := helpers.RequireInitContainer(t, pod, helpers.PreflightInheritDisabledName)
+
+				require.Equal(t, helpers.PreflightInheritedEnvValue,
+					helpers.FindEnvValue(enabled.Env, helpers.PreflightInheritedEnvName),
+					"pod %s: opted-in init container should inherit workload env", podName)
+				require.True(t, helpers.HasVolumeMount(enabled.VolumeMounts, helpers.PreflightInheritedVolumeName),
+					"pod %s: opted-in init container should inherit workload volume mount", podName)
+
+				require.Empty(t,
+					helpers.FindEnvValue(disabled.Env, helpers.PreflightInheritedEnvName),
+					"pod %s: opted-out init container should not inherit workload env", podName)
+				require.False(t, helpers.HasVolumeMount(disabled.VolumeMounts, helpers.PreflightInheritedVolumeName),
+					"pod %s: opted-out init container should not inherit workload volume mount", podName)
 
 				t.Logf("Pod %s init containers: %v", podName, initNames)
 			}
