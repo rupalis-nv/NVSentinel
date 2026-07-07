@@ -305,9 +305,9 @@ gangDiscovery:
 
 Here membership is determined by a pod label instead of an annotation. The rest of the flow is the same: look up the PodGroup CRD and extract `minCount` via CEL.
 
-### KAI Scheduler
+### OSMO + KAI Scheduler
 
-[KAI Scheduler](https://github.com/kai-scheduler/KAI-Scheduler) uses the `scheduling.run.ai/v2alpha2` PodGroup CRD. Preflight reads the configured PodGroup annotation, fetches the PodGroup, and uses `spec.minMember` as the expected gang size for `preflight-nccl-allreduce`.
+[KAI Scheduler](https://github.com/kai-scheduler/KAI-Scheduler) uses the `scheduling.run.ai/v2alpha2` PodGroup CRD. In NVIDIA DGX Cloud deployments, KAI runs with **OSMO**: OSMO creates the PodGroup and labels each pod with `osmo.group_uuid`. Preflight reads that label, fetches the PodGroup, and uses `spec.minMember` as the expected gang size for `preflight-nccl-allreduce`.
 
 #### Step 1 — Enable preflight cluster-wide
 
@@ -318,11 +318,9 @@ global:
 
 preflight:
   gangDiscovery:
-    name: "kai"
-    annotationKeys:
-      - "scheduling.run.ai/pod-group"
-      # Optional fallback if your KAI deployment uses the upstream KAI pod-group annotation:
-      - "pod-group-name"
+    name: "osmo-with-kai"
+    labelKeys:
+      - "osmo.group_uuid"
     podGroupGVR:
       group: "scheduling.run.ai"
       version: "v2alpha2"
@@ -340,53 +338,38 @@ kubectl label namespace <training-namespace> nvsentinel.nvidia.com/preflight=ena
 
 #### Step 3 — Submit a gang-scheduled workload
 
-KAI creates PodGroups automatically via its Pod Grouper. For distributed training, use a workload type that sets `minMember > 1` (for example PyTorchJob, MPIJob, or a JobSet). Each pod in the gang should carry a PodGroup annotation that matches one of the configured `annotationKeys`:
+OSMO creates the PodGroup and labels each pod in the gang with `osmo.group_uuid`. Verify membership and the PodGroup before checking gang coordination:
 
 ```bash
-kubectl -n <training-namespace> get pod <pod-name> -o jsonpath='{.metadata.annotations.scheduling\.run\.ai/pod-group}{"\n"}'
-kubectl -n <training-namespace> get podgroup
+kubectl -n <training-namespace> get pod <pod-name> -o jsonpath='{.metadata.labels.osmo\.group_uuid}{"\n"}'
+kubectl -n <training-namespace> get podgroups.scheduling.run.ai
 ```
 
-Expected gang ID format: `kai-<namespace>-<podGroupName>` (for example `kai-team-a-pg-myjob-abc123`).
+The gang ID is `<gangDiscovery.name>-<namespace>-<podGroupName>`. For example, with `name: osmo-with-kai` in namespace `team-a` and PodGroup `myjob`, the gang ID is `osmo-with-kai-team-a-myjob`.
+
+> If the PodGroup does not exist yet, preflight still creates the gang ConfigMap at admission but records `expected_count: 0` until a PodGroup with `minMember` is found.
 
 #### Step 4 — Verify gang coordination (multi-node checks only)
 
 When `preflight-nccl-allreduce` is enabled, confirm the gang ConfigMap is created and populated:
 
 ```bash
-kubectl -n <training-namespace> get configmap -l nvsentinel.nvidia.com/managed-by=preflight
+kubectl -n <training-namespace> get configmap -l nvsentinel.nvidia.com/managed-by=preflight -o yaml
 ```
 
 The ConfigMap should contain `expected_count`, `peers`, `master_addr`, and `gang_id` before the NCCL init container completes. The ConfigMap name starts with `preflight-`, but long gang IDs are sanitized and truncated with a hash suffix, so use the label selector above instead of constructing the name by hand.
 
 ### Grove
 
-[Grove](https://github.com/ai-dynamo/grove) orchestrates multi-component AI inference workloads and relies on **KAI Scheduler** for gang scheduling. Grove's operator translates a `PodCliqueSet` into `PodGang` resources; KAI then creates or resolves the corresponding `scheduling.run.ai/v2alpha2` PodGroups and annotates pods with the PodGroup key configured in `gangDiscovery.annotationKeys`.
+[Grove](https://github.com/ai-dynamo/grove) orchestrates multi-component AI inference workloads and relies on **KAI Scheduler** for gang scheduling. Grove's operator translates a `PodCliqueSet` into `PodGang` resources; KAI then creates or resolves the corresponding `scheduling.run.ai/v2alpha2` PodGroups.
 
-From preflight's perspective, Grove workloads use the **same `gangDiscovery` configuration as KAI** — there is no Grove-specific CRD to configure.
-
-#### Step 1 — Configure preflight for KAI (Grove prerequisite)
-
-Use the KAI `gangDiscovery` block from the previous section. Grove does not change the PodGroup GVR or annotation keys.
-
-#### Step 2 — Label Grove workload namespaces
+From preflight's perspective, Grove workloads use the **same OSMO + KAI `gangDiscovery` configuration** — there is no Grove-specific CRD to configure. Set up preflight exactly as in the [OSMO + KAI Scheduler](#osmo--kai-scheduler) section, then label the Grove workload namespace:
 
 ```bash
 kubectl label namespace <grove-namespace> nvsentinel.nvidia.com/preflight=enabled
 ```
 
-#### Step 3 — Verify PodGroup discovery
-
-After Grove creates workload pods, verify that KAI has associated each pod with a PodGroup using the annotation key configured in `gangDiscovery.annotationKeys`:
-
-```bash
-kubectl -n <grove-namespace> get pods -o custom-columns=\
-NAME:.metadata.name,\
-POD_GROUP:.metadata.annotations.scheduling\\.run\\.ai/pod-group,\
-SUBGROUP:.metadata.labels.kai\\.scheduler/subgroup-name
-```
-
-Expected gang ID: `kai-<namespace>-<podGroupName>`.
+Verify that pods carry the `osmo.group_uuid` label and that a PodGroup exists, then confirm the gang ConfigMap as in OSMO + KAI Step 4. The gang ID follows the same `<gangDiscovery.name>-<namespace>-<podGroupName>` form.
 
 ### Per-namespace gang discovery
 
@@ -633,16 +616,16 @@ These failures usually involve gang discovery, gang coordination, or fabric conf
 #### Gang discovery problems
 
 ```bash
-# Pod should carry a PodGroup annotation (KAI example)
-kubectl -n <namespace> get pod <pod-name> -o jsonpath='{.metadata.annotations}{"\n"}'
+# Pod should carry the osmo.group_uuid label
+kubectl -n <namespace> get pod <pod-name> -o jsonpath='{.metadata.labels.osmo\.group_uuid}{"\n"}'
 
 # PodGroup exists and minMember matches expected gang size
-kubectl -n <namespace> get podgroup <name> -o yaml
+kubectl -n <namespace> get podgroups.scheduling.run.ai <name> -o yaml
 ```
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Check skipped / no gang env vars | `gangDiscovery` not configured for your scheduler | Set KAI or Grove config (see above) |
+| Check skipped / no gang env vars | `gangDiscovery` not configured for your scheduler | Set OSMO + KAI or Grove config (see above) |
 | `Forbidden` on PodGroup get in preflight logs | Missing RBAC | Add aggregated ClusterRole for your scheduler CRD |
 | Wrong `expected_count` in ConfigMap | Incorrect `minCountExpr` | Default `podGroup.spec.minMember`; adjust for your CRD schema |
 | Divergent gang IDs mid-flight | `PreflightConfig` changed during gang launch | Change gang discovery only during quiet windows |
@@ -668,7 +651,7 @@ kubectl -n <namespace> get configmap <preflight-configmap-name> -o yaml
 
 | ConfigMap state | Likely cause | Fix |
 |-----------------|--------------|-----|
-| Missing entirely | Webhook did not detect a gang | Verify `scheduling.run.ai/pod-group` (KAI) or the scheduler annotation configured in `gangDiscovery.annotationKeys` |
+| Missing entirely | Webhook did not detect a gang | Verify the pod carries the `osmo.group_uuid` label configured in `gangDiscovery.labelKeys` |
 | `expected_count` set, `peers` empty | Pods not yet scheduled / no Pod IPs | Wait for KAI gang scheduling; check scheduler events |
 | Partial `peers` list at timeout | Not all gang members admitted | Verify `minMember` matches running pod count; check gang scheduling |
 | Peers present, NCCL still fails | Fabric / NCCL misconfiguration | Enable `inheritUserEnv`; set `ncclTopoShape` for Azure IB |

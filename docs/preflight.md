@@ -63,7 +63,7 @@ Key configuration areas:
 | Area | Description |
 |------|-------------|
 | `preflight.initContainers` | Which checks to inject, their images, env vars, and resource limits. DCGM config (`DCGM_HOSTENGINE_ADDR`, `DCGM_DIAG_LEVEL`) is defined as env vars on the `preflight-dcgm-diag` container |
-| `preflight.gangDiscovery` | Scheduler-specific gang identification (KAI, Grove, Volcano, Run:ai, native K8s) |
+| `preflight.gangDiscovery` | Scheduler-specific gang identification (OSMO + KAI, Grove, Volcano, Run:ai, native K8s) |
 | `preflight.gangCoordination` | Multi-node coordination timeouts, NCCL topology, extra mounts |
 | `preflight.webhook` | TLS, failure policy, cert provider |
 | `preflight.namespaceSelector` | Which namespaces the webhook applies to |
@@ -73,8 +73,8 @@ For detailed configuration including per-check env vars, fabric-specific NCCL se
 
 ### Scheduler-specific setup
 
-- [KAI Scheduler](./configuration/preflight.md#kai-scheduler) — gang discovery for KAI `PodGroup` resources
-- [Grove](./configuration/preflight.md#grove) — preflight with Grove + KAI for disaggregated inference
+- [OSMO + KAI Scheduler](./configuration/preflight.md#osmo--kai-scheduler) — gang discovery for OSMO-managed KAI `PodGroup` resources
+- [Grove](./configuration/preflight.md#grove) — preflight with Grove + OSMO + KAI
 
 ### Troubleshooting
 
