@@ -63,7 +63,7 @@ Key configuration areas:
 | Area | Description |
 |------|-------------|
 | `preflight.initContainers` | Which checks to inject, their images, env vars, and resource limits. DCGM config (`DCGM_HOSTENGINE_ADDR`, `DCGM_DIAG_LEVEL`) is defined as env vars on the `preflight-dcgm-diag` container |
-| `preflight.gangDiscovery` | Scheduler-specific gang identification (Volcano, Run:ai, native K8s) |
+| `preflight.gangDiscovery` | Scheduler-specific gang identification (KAI, Grove, Volcano, Run:ai, native K8s) |
 | `preflight.gangCoordination` | Multi-node coordination timeouts, NCCL topology, extra mounts |
 | `preflight.webhook` | TLS, failure policy, cert provider |
 | `preflight.namespaceSelector` | Which namespaces the webhook applies to |
@@ -71,9 +71,18 @@ Key configuration areas:
 
 For detailed configuration including per-check env vars, fabric-specific NCCL setup, and gang discovery examples, see [Preflight configuration](./configuration/preflight.md).
 
+### Scheduler-specific setup
+
+- [KAI Scheduler](./configuration/preflight.md#kai-scheduler) — gang discovery for KAI `PodGroup` resources
+- [Grove](./configuration/preflight.md#grove) — preflight with Grove + KAI for disaggregated inference
+
+### Troubleshooting
+
+See [Debugging preflight failures](./configuration/preflight.md#debugging-preflight-failures) for a step-by-step guide covering init container logs, webhook issues, gang coordination timeouts, and NCCL/fabric misconfiguration.
+
 ## Related Documentation
 
-- [Preflight configuration guide](./configuration/preflight.md) — full Helm values reference
+- [Preflight configuration guide](./configuration/preflight.md) — full Helm values reference and debugging guide
 - [ADR-026: Preflight checks](./designs/026-preflight-checks.md) — architecture and design rationale
 - [ADR-035: Inline DCGM config](./designs/035-preflight-inline-dcgm-config.md) — design rationale for inline env var configuration
 - [GPU Health Monitor](./gpu-health-monitor.md) — continuous runtime GPU monitoring (complementary to preflight)
