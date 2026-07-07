@@ -359,11 +359,6 @@ kubectl -n <training-namespace> get configmap -l nvsentinel.nvidia.com/managed-b
 
 The ConfigMap should contain `expected_count`, `peers`, `master_addr`, and `gang_id` before the NCCL init container completes. The ConfigMap name starts with `preflight-`, but long gang IDs are sanitized and truncated with a hash suffix, so use the label selector above instead of constructing the name by hand.
 
-#### KAI-specific notes
-
-- **Skeleton ConfigMap at admission**: Preflight creates an empty gang ConfigMap when the webhook admits a gang pod. This is required because KAI validates optional ConfigMap volume references before scheduling ([KAI-Scheduler#988](https://github.com/NVIDIA/KAI-Scheduler/issues/988)).
-- **Per-namespace override**: If only some namespaces use KAI while others use native Kubernetes gang APIs, create a `PreflightConfig` in the KAI namespace instead of changing the cluster-wide default (see [Per-namespace gang discovery](#per-namespace-gang-discovery)).
-
 ### Grove
 
 [Grove](https://github.com/ai-dynamo/grove) orchestrates multi-component AI inference workloads (for example disaggregated prefill/decode) and relies on **KAI Scheduler** for gang scheduling. Grove's operator translates a `PodCliqueSet` into `PodGang` resources; KAI then creates or resolves the corresponding `scheduling.run.ai/v2alpha2` PodGroups and annotates pods with the PodGroup key configured in `gangDiscovery.annotationKeys`.
