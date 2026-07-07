@@ -361,7 +361,7 @@ The ConfigMap should contain `expected_count`, `peers`, `master_addr`, and `gang
 
 ### Grove
 
-[Grove](https://github.com/ai-dynamo/grove) orchestrates multi-component AI inference workloads (for example disaggregated prefill/decode) and relies on **KAI Scheduler** for gang scheduling. Grove's operator translates a `PodCliqueSet` into `PodGang` resources; KAI then creates or resolves the corresponding `scheduling.run.ai/v2alpha2` PodGroups and annotates pods with the PodGroup key configured in `gangDiscovery.annotationKeys`.
+[Grove](https://github.com/ai-dynamo/grove) orchestrates multi-component AI inference workloads and relies on **KAI Scheduler** for gang scheduling. Grove's operator translates a `PodCliqueSet` into `PodGang` resources; KAI then creates or resolves the corresponding `scheduling.run.ai/v2alpha2` PodGroups and annotates pods with the PodGroup key configured in `gangDiscovery.annotationKeys`.
 
 From preflight's perspective, Grove workloads use the **same `gangDiscovery` configuration as KAI** — there is no Grove-specific CRD to configure.
 
@@ -375,29 +375,9 @@ Use the KAI `gangDiscovery` block from the previous section. Grove does not chan
 kubectl label namespace <grove-namespace> nvsentinel.nvidia.com/preflight=enabled
 ```
 
-#### Step 3 — Scope checks to GPU cliques (recommended)
+#### Step 3 — Verify PodGroup discovery
 
-A `PodCliqueSet` can contain multiple roles (prefill, decode, router, and so on). Not every role needs multi-node NCCL validation. Use the per-pod annotation to run only the checks you need:
-
-```yaml
-# On GPU cliques that need interconnect validation:
-metadata:
-  annotations:
-    nvsentinel.nvidia.com/preflight-checks: "preflight-dcgm-diag,preflight-nccl-allreduce"
-
-# On non-GPU or single-node roles (router, frontend):
-metadata:
-  annotations:
-    nvsentinel.nvidia.com/preflight-checks: ""
-```
-
-When `preflight-nccl-allreduce` is enabled, **all pods in the same KAI PodGroup must use the same `preflight-checks` annotation value** — mismatches fail admission.
-
-#### Step 4 — Understand gang boundaries in Grove
-
-Grove creates hierarchical gangs at multiple levels (`PodClique`, `PodCliqueScalingGroup`, `PodGang`). KAI maps each schedulable gang unit to a PodGroup. Preflight's `preflight-nccl-allreduce` coordinates **within one PodGroup** — typically the pods in a single `PodCliqueScalingGroup` replica, not across unrelated cliques in the same `PodCliqueSet`.
-
-Verify which PodGroup your pods belong to:
+After Grove creates workload pods, verify that KAI has associated each pod with a PodGroup using the annotation key configured in `gangDiscovery.annotationKeys`:
 
 ```bash
 kubectl -n <grove-namespace> get pods -o custom-columns=\
@@ -407,12 +387,6 @@ SUBGROUP:.metadata.labels.kai\\.scheduler/subgroup-name
 ```
 
 Expected gang ID: `kai-<namespace>-<podGroupName>`.
-
-#### Grove-specific notes
-
-- **Startup ordering**: Grove can start cliques in a defined order (`startupPolicy`). Preflight init containers run after the pod is scheduled and before main containers start — they do not interfere with Grove's clique ordering, but they add latency to each GPU pod's startup.
-- **Fabric config inheritance**: Disaggregated inference often sets NCCL/fabric env vars only on GPU cliques. Enable `inheritUserEnv` and `inheritUserVolumeMounts` on `preflight-nccl-allreduce` so preflight mirrors the workload's fabric configuration (see [Fabric-specific NCCL configuration](#fabric-specific-nccl-configuration)).
-- **References**: [Grove documentation](https://docs.nvidia.com/dynamo/dev/kubernetes-deployment/multinode/grove), [KAI Scheduler](https://github.com/kai-scheduler/KAI-Scheduler).
 
 ### Per-namespace gang discovery
 
