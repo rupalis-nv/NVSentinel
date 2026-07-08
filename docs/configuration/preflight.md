@@ -307,7 +307,7 @@ Here membership is determined by a pod label instead of an annotation. The rest 
 
 ### OSMO + KAI Scheduler
 
-[KAI Scheduler](https://github.com/kai-scheduler/KAI-Scheduler) uses the `scheduling.run.ai/v2alpha2` PodGroup CRD. In NVIDIA DGX Cloud deployments, KAI runs with **OSMO**: OSMO creates the PodGroup and labels each pod with `osmo.group_uuid`. Preflight reads that label, fetches the PodGroup, and uses `spec.minMember` as the expected gang size for `preflight-nccl-allreduce`.
+[KAI Scheduler](https://github.com/kai-scheduler/KAI-Scheduler) uses the `scheduling.run.ai/v2alpha2` PodGroup CRD. KAI does not run standalone — it requires an orchestrator (for example OSMO or SkyPilot) to create PodGroups and associate pods with them. This section documents the **OSMO + KAI** integration: OSMO creates the PodGroup and labels each pod with `osmo.group_uuid`. Preflight reads that label, fetches the PodGroup, and uses `spec.minMember` as the expected gang size for `preflight-nccl-allreduce`.
 
 #### Step 1 — Enable preflight cluster-wide
 
@@ -336,40 +336,41 @@ The chart's built-in RBAC contributor role grants read access to `scheduling.run
 kubectl label namespace <training-namespace> nvsentinel.nvidia.com/preflight=enabled
 ```
 
-#### Step 3 — Submit a gang-scheduled workload
+Preflight injects `imagePullSecrets` from Helm values (for example `nvidia-ngcuser-pull-secret`) into admitted pods. The secret must also exist in each workload namespace — copy it from a namespace that already has it if needed:
 
-OSMO creates the PodGroup and labels each pod in the gang with `osmo.group_uuid`. Verify membership and the PodGroup before checking gang coordination:
+```bash
+kubectl -n <source-namespace> get secret nvidia-ngcuser-pull-secret -o yaml \
+  | sed 's/namespace: <source-namespace>/namespace: <training-namespace>/' \
+  | kubectl -n <training-namespace> apply -f -
+```
+
+Ensure `preflight.initContainers` image tags in the preflight ConfigMap point to published tags in `nvcr.io/nv-ngc-devops/` (for example `v1.13.0`). Pods fail with `ImagePullBackOff` or `not found` when the tag does not exist.
+
+#### Step 3 — Submit a workload
+
+OSMO labels each pod in the gang with `osmo.group_uuid`. Verify the label on an admitted pod:
 
 ```bash
 kubectl -n <training-namespace> get pod <pod-name> -o jsonpath='{.metadata.labels.osmo\.group_uuid}{"\n"}'
-kubectl -n <training-namespace> get podgroups.scheduling.run.ai
 ```
 
 The gang ID is `<gangDiscovery.name>-<namespace>-<podGroupName>`. For example, with `name: osmo-with-kai` in namespace `team-a` and PodGroup `myjob`, the gang ID is `osmo-with-kai-team-a-myjob`.
 
-> If the PodGroup does not exist yet, preflight still creates the gang ConfigMap at admission but records `expected_count: 0` until a PodGroup with `minMember` is found.
+#### Step 4 — Verify injection
 
-#### Step 4 — Verify gang coordination (multi-node checks only)
-
-When `preflight-nccl-allreduce` is enabled, confirm the gang ConfigMap is created and populated:
+After a GPU pod with `osmo.group_uuid` is admitted, confirm the webhook injected preflight init containers and created the gang ConfigMap:
 
 ```bash
+# Init containers injected (preflight-dcgm-diag, preflight-nccl-loopback, preflight-nccl-allreduce)
+kubectl -n <training-namespace> get pod <pod-name> -o jsonpath='{range .spec.initContainers[*]}{.name}{": "}{.image}{"\n"}{end}'
+
+# Gang ConfigMap created at admission
 kubectl -n <training-namespace> get configmap -l nvsentinel.nvidia.com/managed-by=preflight -o yaml
 ```
 
-The ConfigMap should contain `expected_count`, `peers`, `master_addr`, and `gang_id` before the NCCL init container completes. The ConfigMap name starts with `preflight-`, but long gang IDs are sanitized and truncated with a hash suffix, so use the label selector above instead of constructing the name by hand.
+At admission, the ConfigMap contains `gang_id`, `expected_count`, `master_port`, `peers`, and `master_addr`. If the PodGroup is not present yet, `expected_count` is `"0"` and `peers` / `master_addr` are empty.
 
-### Grove
-
-[Grove](https://github.com/ai-dynamo/grove) orchestrates multi-component AI inference workloads and relies on **KAI Scheduler** for gang scheduling. Grove's operator translates a `PodCliqueSet` into `PodGang` resources; KAI then creates or resolves the corresponding `scheduling.run.ai/v2alpha2` PodGroups.
-
-From preflight's perspective, Grove workloads use the **same OSMO + KAI `gangDiscovery` configuration** — there is no Grove-specific CRD to configure. Set up preflight exactly as in the [OSMO + KAI Scheduler](#osmo--kai-scheduler) section, then label the Grove workload namespace:
-
-```bash
-kubectl label namespace <grove-namespace> nvsentinel.nvidia.com/preflight=enabled
-```
-
-Verify that pods carry the `osmo.group_uuid` label and that a PodGroup exists, then confirm the gang ConfigMap as in OSMO + KAI Step 4. The gang ID follows the same `<gangDiscovery.name>-<namespace>-<podGroupName>` form.
+The ConfigMap name starts with `preflight-`, but long gang IDs are sanitized and truncated with a hash suffix, so use the label selector above instead of constructing the name by hand.
 
 ### Per-namespace gang discovery
 
@@ -523,193 +524,6 @@ Tilt development often trims init containers to DCGM-only; see `distros/kubernet
 
 - Webhook pod: liveness/readiness probes use `/healthz` on the webhook port.
 - Prometheus metric names for check containers and the injector are specified in [ADR-026 § Metrics](../designs/026-preflight-checks.md#metrics); wire scrapers to your init container images and deployment as your environment allows.
-
-## Debugging preflight failures
-
-When a preflight check fails, the pod stays in `Init:Error` (or `Init:CrashLoopBackOff`), a health event enters the NVSentinel pipeline, and the node may proceed through quarantine. Use the steps below to determine whether the failure is a real hardware/interconnect problem, a misconfiguration, or an infrastructure issue.
-
-### 1. Identify the failing check
-
-```bash
-# Pod phase and init container status
-kubectl -n <namespace> describe pod <pod-name>
-
-# Exit code and termination message for each preflight init container
-kubectl -n <namespace> get pod <pod-name> -o jsonpath=\
-'{range .status.initContainerStatuses[*]}{.name}{"\t"}{.state.terminated.exitCode}{"\t"}{.state.terminated.reason}{"\n"}{end}'
-```
-
-| Exit code | Meaning |
-|-----------|---------|
-| `0` | Check passed |
-| `1` | Check failed (GPU or interconnect unhealthy) |
-| `2` | Configuration error in the init container |
-
-Focus on init containers whose names start with `preflight-`.
-
-### 2. Read init container logs
-
-```bash
-kubectl -n <namespace> logs <pod-name> -c preflight-dcgm-diag
-kubectl -n <namespace> logs <pod-name> -c preflight-nccl-loopback
-kubectl -n <namespace> logs <pod-name> -c preflight-nccl-allreduce
-```
-
-For NCCL failures, temporarily raise verbosity in Helm values:
-
-```yaml
-initContainers:
-  - name: preflight-nccl-allreduce
-    env:
-      - name: NCCL_DEBUG
-        value: "INFO"
-      - name: NCCL_DEBUG_SUBSYS
-        value: "INIT,NET"
-```
-
-### 3. Webhook not injecting init containers
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| No `preflight-*` init containers in pod spec | Namespace not labeled | `kubectl label namespace <ns> nvsentinel.nvidia.com/preflight=enabled` |
-| No injection on some pods only | `objectSelector` or `preflight-checks: ""` | Check pod labels and annotations |
-| Pod creation rejected | Invalid `preflight-checks` annotation | Use comma-separated valid container names; no duplicates |
-| All pod creates fail | Webhook down or TLS issue | Check preflight deployment and cert-manager certificates |
-
-```bash
-# Webhook health
-kubectl -n nvsentinel get pods -l app.kubernetes.io/name=preflight
-kubectl -n nvsentinel logs -l app.kubernetes.io/name=preflight --tail=100
-
-# Recent admission failures
-kubectl -n nvsentinel get events --field-selector reason=FailedMount --sort-by='.lastTimestamp'
-```
-
-If the webhook is unavailable and `webhook.failurePolicy` is `Fail`, **all** GPU pod creation is blocked — consider `Ignore` for graceful degradation during maintenance.
-
-### 4. DCGM diagnostic failures (`preflight-dcgm-diag`)
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Connection refused / timeout to hostengine | Wrong `DCGM_HOSTENGINE_ADDR` or DCGM not running | Verify GPU Operator DCGM service; see [GPU Monitor DCGM Failures](../runbooks/gpu-monitor-dcgm-failures.md) |
-| Test FAIL on memory/PCIe/NVLink | Hardware fault | Expected behavior — node quarantine proceeds |
-| `DCGM_ST_*` after retries, exit 0 | DCGM infrastructure issue | Non-fatal by design; check DCGM hostengine health |
-| Check too slow | `DCGM_DIAG_LEVEL` too high | Lower to `1` (~30 s) for faster startup |
-
-```bash
-kubectl -n <namespace> get pod <pod-name> -o jsonpath=\
-'{range .spec.initContainers[?(@.name=="preflight-dcgm-diag")].env[?(@.name=="DCGM_HOSTENGINE_ADDR")]}{.value}{"\n"}{end}'
-```
-
-### 5. Single-node NCCL failures (`preflight-nccl-loopback`)
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Bandwidth below threshold | PCIe vs NVLink mismatch | Lower `BW_THRESHOLD_GBPS` (~15 for PCIe, ~150 for NVLink) |
-| NCCL init errors | Missing GPU or driver issue | Verify `nvidia.com/gpu` resources allocated to the pod |
-| Hang / timeout | GPU topology issue | Set `NCCL_DEBUG=INFO` and inspect logs |
-
-### 6. Multi-node NCCL failures (`preflight-nccl-allreduce`)
-
-These failures usually involve gang discovery, gang coordination, or fabric configuration.
-
-#### Gang discovery problems
-
-```bash
-# Pod should carry the osmo.group_uuid label
-kubectl -n <namespace> get pod <pod-name> -o jsonpath='{.metadata.labels.osmo\.group_uuid}{"\n"}'
-
-# PodGroup exists and minMember matches expected gang size
-kubectl -n <namespace> get podgroups.scheduling.run.ai <name> -o yaml
-```
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Check skipped / no gang env vars | `gangDiscovery` not configured for your scheduler | Set OSMO + KAI or Grove config (see above) |
-| `Forbidden` on PodGroup get in preflight logs | Missing RBAC | Add aggregated ClusterRole for your scheduler CRD |
-| Wrong `expected_count` in ConfigMap | Incorrect `minCountExpr` | Default `podGroup.spec.minMember`; adjust for your CRD schema |
-| Divergent gang IDs mid-flight | `PreflightConfig` changed during gang launch | Change gang discovery only during quiet windows |
-
-Verify `PreflightConfig` readiness when using per-namespace overrides:
-
-```bash
-kubectl -n <namespace> get preflightconfig
-kubectl -n <namespace> get preflightconfig default -o yaml
-```
-
-#### Gang coordination timeout
-
-The init container waits up to `gangCoordination.timeout` (default `10m`) for all peers to register in the gang ConfigMap.
-
-```bash
-# Find gang ConfigMaps
-kubectl -n <namespace> get configmap -l nvsentinel.nvidia.com/managed-by=preflight
-
-# Inspect coordination state
-kubectl -n <namespace> get configmap <preflight-configmap-name> -o yaml
-```
-
-| ConfigMap state | Likely cause | Fix |
-|-----------------|--------------|-----|
-| Missing entirely | Webhook did not detect a gang | Verify the pod carries the `osmo.group_uuid` label configured in `gangDiscovery.labelKeys` |
-| `expected_count` set, `peers` empty | Pods not yet scheduled / no Pod IPs | Wait for KAI gang scheduling; check scheduler events |
-| Partial `peers` list at timeout | Not all gang members admitted | Verify `minMember` matches running pod count; check gang scheduling |
-| Peers present, NCCL still fails | Fabric / NCCL misconfiguration | Enable `inheritUserEnv`; set `ncclTopoShape` for Azure IB |
-
-```bash
-# Scheduler events for gang pods
-kubectl -n <namespace> describe pod <pod-name> | grep -A5 Events
-```
-
-#### Fabric / NCCL configuration
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| NCCL falls back to TCP / low bandwidth | Missing topology or EFA libs | Set `gangCoordination.ncclTopoShape` or `extraHostPathMounts` |
-| Works for workload but not preflight | Inheritance disabled | Set `inheritUserEnv: true` on `preflight-nccl-allreduce` |
-| `preflight-checks` mismatch across gang | Inconsistent annotations | Use the same annotation on every pod in the PodGroup |
-
-### 7. Health events and downstream effects
-
-Preflight reports results via the Platform Connector (same path as health monitors):
-
-```bash
-# Platform connector and preflight controller logs
-kubectl -n nvsentinel logs -l app.kubernetes.io/name=preflight --tail=200 | grep -iE 'gang|inject|error'
-
-# Node conditions after a fatal preflight failure
-kubectl describe node <node-name> | grep -A3 Conditions
-```
-
-A fatal GPU or interconnect failure is **expected** to trigger quarantine. Confirm the failure is genuine (check init container logs) before overriding or disabling checks.
-
-### 8. Temporarily bypass checks (troubleshooting only)
-
-To isolate whether preflight is causing the issue:
-
-```yaml
-# Disable all checks on a single pod:
-metadata:
-  annotations:
-    nvsentinel.nvidia.com/preflight-checks: ""
-```
-
-Or disable preflight for the namespace by removing the label (not recommended in production):
-
-```bash
-kubectl label namespace <namespace> nvsentinel.nvidia.com/preflight-
-```
-
-### 9. Metrics
-
-| Metric | Use |
-|--------|-----|
-| `preflight_check_failures_total` | Failure rate by check and error code |
-| `preflight_gang_wait_seconds` | Gang coordination latency — high values indicate scheduling or discovery issues |
-| `preflight_injection_total` | Webhook injection success/failure |
-| `preflight_config_errors_total` | Gang discovery or configuration errors |
-
-See [ADR-026 § Metrics](../designs/026-preflight-checks.md#metrics) for the full list.
 
 ## Related documentation
 
