@@ -336,16 +336,6 @@ The chart's built-in RBAC contributor role grants read access to `scheduling.run
 kubectl label namespace <training-namespace> nvsentinel.nvidia.com/preflight=enabled
 ```
 
-Preflight injects `imagePullSecrets` from Helm values (for example `nvidia-ngcuser-pull-secret`) into admitted pods. The secret must also exist in each workload namespace — copy it from a namespace that already has it if needed:
-
-```bash
-kubectl -n <source-namespace> get secret nvidia-ngcuser-pull-secret -o yaml \
-  | sed 's/namespace: <source-namespace>/namespace: <training-namespace>/' \
-  | kubectl -n <training-namespace> apply -f -
-```
-
-Ensure `preflight.initContainers` image tags in the preflight ConfigMap point to published tags in `nvcr.io/nv-ngc-devops/` (for example `v1.13.0`). Pods fail with `ImagePullBackOff` or `not found` when the tag does not exist.
-
 #### Step 3 — Submit a workload
 
 OSMO labels each pod in the gang with `osmo.group_uuid`. Verify the label on an admitted pod:
