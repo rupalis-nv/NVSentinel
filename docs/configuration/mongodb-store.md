@@ -4,7 +4,7 @@
 
 The MongoDB Store module provides persistent storage for health events collected by NVSentinel monitors. It deploys a MongoDB replica set with TLS encryption and authentication.
 
-Two in-cluster backends are supported: **Bitnami** (default) and **Percona Operator** (recommended for new deployments). This page covers Helm configuration for both.
+Two in-cluster backends are supported: **Bitnami** (default) and **Percona Operator**. This page covers Helm configuration for both.
 
 ## Backend selection
 
