@@ -6,10 +6,6 @@ The MongoDB Store module provides persistent storage for health events collected
 
 Two in-cluster backends are supported: **Bitnami** (default) and **Percona Operator** (recommended for new deployments). This page covers Helm configuration for both.
 
-> Note: cert-manager must be installed in the cluster before deploying mongodb-store.
-
-> Note: Several modules (fault-quarantine, node-drainer, fault-remediation, event-exporter) depend on the datastore. Enable the datastore when using these modules.
-
 ## Backend selection
 
 | Backend | Helm flags | Configuration keys |
@@ -35,7 +31,7 @@ mongodb-store:
   usePerconaOperator: true
 ```
 
-When Percona is enabled, `mongodb.*` values are ignored — configure the replica set under `psmdb-db` (see defaults in `distros/kubernetes/nvsentinel/charts/mongodb-store/values.yaml`). Example overlay: `distros/kubernetes/nvsentinel/values-tilt-mongodb-percona.yaml`.
+When Percona is enabled, the replica set is configured under `psmdb-db` instead of `mongodb.*` (see defaults in `distros/kubernetes/nvsentinel/charts/mongodb-store/values.yaml`).
 
 - **Service endpoint:** `mongodb-rs0.<namespace>.svc.cluster.local:27017`
 - **Metrics:** `percona/mongodb_exporter` sidecar on port `9216` (configured in default `psmdb-db` values)
@@ -47,8 +43,6 @@ Verify after install:
 kubectl get perconaservermongodb -n <namespace>
 kubectl get pods -n <namespace> -l app.kubernetes.io/name=percona-server-mongodb
 ```
-
-Connect via the [Datastore Connection runbook](../runbooks/datastore-connection.md).
 
 ## Configuration Reference
 
@@ -80,10 +74,6 @@ Node selector for scheduling MongoDB initialization jobs.
 
 ##### tolerations
 Tolerations for MongoDB initialization jobs to run on tainted nodes.
-
-### Bitnami backend
-
-The sections below apply when `usePerconaOperator: false` (default). For Percona node placement, use `psmdb-db.replsets.rs0.nodeSelector` and `tolerations`.
 
 ### Node Placement
 
