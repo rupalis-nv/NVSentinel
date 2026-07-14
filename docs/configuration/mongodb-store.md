@@ -11,7 +11,7 @@ Two in-cluster backends are supported: **Bitnami** (default) and **Percona Opera
 | Backend | Helm flags | Configuration keys |
 | ------- | ---------- | ------------------ |
 | Bitnami (default) | `useBitnami: true`, `usePerconaOperator: false` | `mongodb-store.mongodb.*` |
-| Percona Operator | `useBitnami: false`, `usePerconaOperator: true` | `mongodb-store.psmdb-db.*`, `psmdb-operator.*` |
+| Percona Operator | `useBitnami: false`, `usePerconaOperator: true` | `mongodb-store.psmdb-db.*`, `mongodb-store.psmdb-operator.*` |
 
 Both flags must be set explicitly when switching backends. See [ADR-013: MongoDB Migration from Bitnami](../designs/013-mongodb-bitnami-migration.md) for rationale, Bitnami → Percona migration steps, and licensing.
 
