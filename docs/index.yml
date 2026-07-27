@@ -29,6 +29,8 @@ navigation:
     contents:
       - page: Data Flow
         path: DATA_FLOW.md
+      - page: HealthEvent Data Model
+        path: health-event-data-model.md
       - page: External Datastore
         path: external-datastore.md
 
