@@ -1234,3 +1234,60 @@ class TestSuppressNvlinkDownOnPcieGpus:
         details = health_status["DCGM_HEALTH_WATCH_NVLINK"]
         assert details.status == dcgm.types.HealthStatus.FAIL
         assert details.entity_failures[0].code == "DCGM_FR_NVLINK_ERROR_THRESHOLD"
+
+
+class TestDCGMWatcherHangSafeOrdering:
+    """The loop must publish findings before making further DCGM calls.
+
+    An unresponsive driver blocks every call including Shutdown(), so anything
+    published only after cleanup is never published at all.
+    """
+
+    @patch("gpu_health_monitor.dcgm_watcher.dcgm.pydcgm.DcgmGroup")
+    @patch("gpu_health_monitor.dcgm_watcher.dcgm.pydcgm.DcgmHandle")
+    def test_connectivity_failure_is_published_before_cleanup(
+        self, mock_dcgm_handle: MagicMock, mock_dcgm_group: MagicMock
+    ) -> None:
+        published = Event()
+        observed = {}
+
+        class SignallingProcessor(FakeEventProcessorInTest):
+            def dcgm_connectivity_failed(self) -> None:
+                super().dcgm_connectivity_failed()
+                published.set()
+
+        watcher = dcgm.DCGMWatcher(
+            addr="localhost:5555",
+            poll_interval_seconds=10,
+            callbacks=[SignallingProcessor()],
+            dcgm_k8s_service_enabled=False,
+        )
+
+        # Saturate the shared callback executor. Critical connectivity delivery
+        # must bypass it or the event remains queued behind these workers.
+        release_workers = Event()
+        saturated_workers = 8
+        for _ in range(saturated_workers):
+            watcher._callback_thread_pool.submit(release_workers.wait, 10)
+
+        dcgm_handle_mock = MagicMock()
+
+        def cleanup() -> None:
+            observed["published_before_cleanup"] = published.is_set()
+            release_workers.set()
+
+        dcgm_handle_mock.Shutdown.side_effect = cleanup
+        mock_dcgm_handle.return_value = dcgm_handle_mock
+
+        dcgm_group_mock = MagicMock()
+        # A timeout from the health check is what flags connectivity failure.
+        dcgm_group_mock.health.Check.side_effect = dcgm_structs.DCGMError_Timeout()
+        mock_dcgm_group.return_value = dcgm_group_mock
+
+        # The first cycle only connects; the health check runs on the second.
+        stop_event = MagicMock(spec=Event)
+        stop_event.is_set.side_effect = [False, False, False, True]
+        stop_event.wait.side_effect = [False, False, True]
+        watcher.start([], stop_event)
+
+        assert observed["published_before_cleanup"] is True

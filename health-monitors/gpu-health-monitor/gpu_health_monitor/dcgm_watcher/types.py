@@ -55,6 +55,10 @@ class CallbackInterface(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def dcgm_connectivity_failed(self):
-        """Called when DCGM connectivity fails during health check."""
+    def dcgm_connectivity_failed(self) -> bool | None:
+        """Called when DCGM connectivity fails during health check.
+
+        Return ``False`` when delivery failed. ``True`` and ``None`` mean the
+        event was delivered or was already active.
+        """
         pass
