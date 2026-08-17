@@ -1,4 +1,11 @@
 {{/*
+MongoDB PVC / manual-PV size. Prefers persistence.size, then global.persistenceSize.
+*/}}
+{{- define "mongodb-store.persistenceSize" -}}
+{{- coalesce .Values.persistence.size .Values.global.persistenceSize "8Gi" -}}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "nvsentinel.name" -}}

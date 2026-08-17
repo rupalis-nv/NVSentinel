@@ -1464,12 +1464,27 @@ janitor:
 # Required by: fault-quarantine, node-drainer, fault-remediation
 ################################################################################
 mongodb-store:
+  # HealthEvents TTL (expireAfterSeconds). Default 30 days; reduce for production
+  # write rates (e.g. 604800 = 7 days) to limit collection growth / HEA latency.
+  collectionExpirySeconds: 2592000
+
+  # MongoDB PVC size — keep persistence.size and global.persistenceSize equal.
+  # global.persistenceSize is what Bitnami/Percona subcharts read (Helm global).
+  persistence:
+    size: "8Gi"
+  global:
+    persistenceSize: "8Gi"
+
   # MongoDB replica configuration
   mongodb:
     # Number of MongoDB replicas
     # Recommend 1 for development, 3 for production
     replicaCount: 1
-    
+
+    # Keep equal to persistence.size / global.persistenceSize above.
+    persistence:
+      size: "8Gi"
+
     # Node selector for MongoDB pods
     # Example - run on control plane:
     # nodeSelector:

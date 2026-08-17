@@ -31,6 +31,28 @@
 useBitnami: true
 usePerconaOperator: false
 
+# HealthEvents / MaintenanceEvents TTL index expireAfterSeconds.
+# Default 2592000 = 30 days. Operators should reduce for production write rates
+# (e.g. 604800 = 7 days) to shrink collection size and HEA query latency.
+collectionExpirySeconds: 2592000
+
+# MongoDB PVC / manual-PV size — consistent knob for Bitnami, Percona, and
+# manual-mode PVs (default 8Gi is for development only).
+# Set persistence.size (issue #1601). Subcharts also read global.persistenceSize;
+# keep both equal (defaults match). Prefer overriding via a values file:
+#   persistence: { size: &pvcSize "12Gi" }
+#   global: { persistenceSize: *pvcSize }
+#   mongodb: { persistence: { size: *pvcSize } }
+# Or --set persistence.size=12Gi --set global.persistenceSize=12Gi
+# --set mongodb.persistence.size=12Gi
+persistence:
+  size: "8Gi"
+
+# Cross-subchart PVC size (Helm only shares parent→subchart via global).
+# Must stay equal to persistence.size at defaults.
+global:
+  persistenceSize: "8Gi"
+
 # SCRAM application user (created when mongodb.tls.enabled is false).
 # Instead of X.509 cert-based users, the Job creates a SCRAM-SHA-256 user
 # with readWrite access to the NVSentinel database.
@@ -108,6 +130,8 @@ mongodb:
   
   persistence:
     resourcePolicy: "keep"
+    # Keep equal to persistence.size / global.persistenceSize (Bitnami StatefulSet PVC).
+    size: "8Gi"
   
   automountServiceAccountToken: true
   
@@ -295,6 +319,7 @@ psmdb-db:
         pvc:
           resources:
             requests:
+              # Keep equal to persistence.size / global.persistenceSize (Percona PVC).
               storage: "8Gi"
       nodeSelector: {}
       tolerations: []
