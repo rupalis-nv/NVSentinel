@@ -34,22 +34,25 @@ usePerconaOperator: false
 # HealthEvents / MaintenanceEvents TTL index expireAfterSeconds.
 # Default 2592000 = 30 days. Operators should reduce for production write rates
 # (e.g. 604800 = 7 days) to shrink collection size and HEA query latency.
+# Valid range: 0–2147483647 (MongoDB int32); invalid values fail Helm render.
 collectionExpirySeconds: 2592000
 
-# MongoDB PVC / manual-PV size — consistent knob for Bitnami, Percona, and
-# manual-mode PVs (default 8Gi is for development only).
-# Set persistence.size (issue #1601). Subcharts also read global.persistenceSize;
-# keep both equal (defaults match). Prefer overriding via a values file:
-#   persistence: { size: &pvcSize "12Gi" }
-#   global: { persistenceSize: *pvcSize }
-#   mongodb: { persistence: { size: *pvcSize } }
-# Or --set persistence.size=12Gi --set global.persistenceSize=12Gi
-# --set mongodb.persistence.size=12Gi
+# MongoDB PVC / manual-PV size (issue #1601). Default 8Gi is for development only.
+#
+# Authoritative: global.persistenceSize — Bitnami, Percona, and manual PVs all
+# read this (Helm only shares parent→subchart via global).
+#
+# Optional: persistence.size — parent-only fallback for manual PVs when
+# global.persistenceSize is unset/empty. Left empty so its default cannot
+# shadow global and diverge from PVC sizing.
+#
+# Prefer:
+#   global: { persistenceSize: "12Gi" }
+#   mongodb: { persistence: { size: "12Gi" } }   # Bitnami nested fallback
+# Or --set global.persistenceSize=12Gi --set mongodb.persistence.size=12Gi
 persistence:
-  size: "8Gi"
+  size: ""
 
-# Cross-subchart PVC size (Helm only shares parent→subchart via global).
-# Must stay equal to persistence.size at defaults.
 global:
   persistenceSize: "8Gi"
 
@@ -130,7 +133,8 @@ mongodb:
   
   persistence:
     resourcePolicy: "keep"
-    # Keep equal to persistence.size / global.persistenceSize (Bitnami StatefulSet PVC).
+    # Bitnami nested fallback when global.persistenceSize is unset; keep equal
+    # to global.persistenceSize when overriding.
     size: "8Gi"
   
   automountServiceAccountToken: true
@@ -319,7 +323,8 @@ psmdb-db:
         pvc:
           resources:
             requests:
-              # Keep equal to persistence.size / global.persistenceSize (Percona PVC).
+              # Nested fallback when global.persistenceSize is unset; keep equal
+              # to global.persistenceSize when overriding.
               storage: "8Gi"
       nodeSelector: {}
       tolerations: []

@@ -1466,12 +1466,14 @@ janitor:
 mongodb-store:
   # HealthEvents TTL (expireAfterSeconds). Default 30 days; reduce for production
   # write rates (e.g. 604800 = 7 days) to limit collection growth / HEA latency.
+  # Valid range: 0–2147483647 (invalid values fail Helm render / schema validation).
   collectionExpirySeconds: 2592000
 
-  # MongoDB PVC size — keep persistence.size and global.persistenceSize equal.
-  # global.persistenceSize is what Bitnami/Percona subcharts read (Helm global).
+  # MongoDB PVC size — global.persistenceSize is authoritative (Bitnami/Percona
+  # + manual PVs). persistence.size is an optional parent-only fallback when
+  # global.persistenceSize is unset; leave empty so it cannot shadow global.
   persistence:
-    size: "8Gi"
+    size: ""
   global:
     persistenceSize: "8Gi"
 
@@ -1481,7 +1483,8 @@ mongodb-store:
     # Recommend 1 for development, 3 for production
     replicaCount: 1
 
-    # Keep equal to persistence.size / global.persistenceSize above.
+    # Bitnami nested fallback when global.persistenceSize is unset; keep equal
+    # to global.persistenceSize above when overriding.
     persistence:
       size: "8Gi"
 

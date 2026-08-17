@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "collectionExpirySeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "title": "HealthEvents / MaintenanceEvents TTL expireAfterSeconds",
+      "description": "MongoDB TTL index expireAfterSeconds for HealthEvents.createdAt and MaintenanceEvents.actualEndTime. Must be an integer from 0 through 2147483647 (int32).",
+      "default": 2592000
+    }
+  }
+}

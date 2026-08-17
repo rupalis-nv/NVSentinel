@@ -1,8 +1,22 @@
 {{/*
-MongoDB PVC / manual-PV size. Prefers persistence.size, then global.persistenceSize.
+MongoDB PVC / manual-PV size. Same source order as Bitnami/Percona PVCs:
+global.persistenceSize (authoritative), then optional persistence.size, then 8Gi.
 */}}
 {{- define "mongodb-store.persistenceSize" -}}
-{{- coalesce .Values.persistence.size .Values.global.persistenceSize "8Gi" -}}
+{{- coalesce .Values.global.persistenceSize .Values.persistence.size "8Gi" -}}
+{{- end }}
+
+{{/*
+Validated HealthEvents/MaintenanceEvents TTL expireAfterSeconds.
+Accepts integers from 0 through 2147483647 (MongoDB int32); fails render otherwise.
+*/}}
+{{- define "mongodb-store.collectionExpirySeconds" -}}
+{{- $raw := .Values.collectionExpirySeconds -}}
+{{- $v := int $raw -}}
+{{- if or (lt $v 0) (gt $v 2147483647) -}}
+{{- fail (printf "mongodb-store.collectionExpirySeconds must be an integer from 0 through 2147483647, got %v" $raw) -}}
+{{- end -}}
+{{- $v -}}
 {{- end }}
 
 {{/*

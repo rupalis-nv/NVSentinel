@@ -58,6 +58,10 @@ metadata:
   name: create-mongodb-database
   annotations:
     argocd.argoproj.io/sync-options: Force=true,Replace=true
+    # Re-run on install/upgrade so collectionExpirySeconds changes apply to existing TTL indexes.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    checksum/collection-expiry: {{ include "mongodb-store.collectionExpirySeconds" . | toString | sha256sum }}
 spec:
   activeDeadlineSeconds: 600
   template:
@@ -284,15 +288,35 @@ spec:
                     print('Collection already exists: $MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME');
                   }
                   
-                  // Create indexes (MongoDB handles duplicates gracefully)
-                  db.$MONGODB_COLLECTION_NAME.createIndex(
-                    { 'createdAt': 1 },
-                    { expireAfterSeconds: $MONGODB_COLLECTION_EXPIRY_SECONDS }
-                  );
-                  db.$MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME.createIndex(
-                    { 'actualEndTime': 1 },
-                    { expireAfterSeconds: $MONGODB_COLLECTION_EXPIRY_SECONDS }
-                  );
+                  // TTL indexes: create if missing, collMod expireAfterSeconds when
+                  // collectionExpirySeconds changes (createIndex alone conflicts on options).
+                  function ensureTTL(collName, field) {
+                    var secs = Number($MONGODB_COLLECTION_EXPIRY_SECONDS);
+                    var key = {};
+                    key[field] = 1;
+                    var existing = db.getCollection(collName).getIndexes().find(function(idx) {
+                      return idx.key && idx.key[field] === 1 && Object.keys(idx.key).length === 1;
+                    });
+                    if (!existing) {
+                      db.getCollection(collName).createIndex(key, { expireAfterSeconds: secs });
+                      print('Created TTL index ' + collName + '.' + field + '=' + secs);
+                    } else if (existing.expireAfterSeconds != secs) {
+                      var res = db.runCommand({
+                        collMod: collName,
+                        index: { name: existing.name, expireAfterSeconds: secs }
+                      });
+                      if (res.ok !== 1) {
+                        throw new Error('collMod failed for ' + collName + ': ' + tojson(res));
+                      }
+                      print('Updated TTL index ' + collName + '.' + field + '=' + secs);
+                    } else {
+                      print('TTL index ' + collName + '.' + field + ' already ' + secs);
+                    }
+                  }
+                  ensureTTL('$MONGODB_COLLECTION_NAME', 'createdAt');
+                  ensureTTL('$MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME', 'actualEndTime');
+
+                  // Non-TTL indexes (MongoDB handles identical duplicates gracefully)
                   db.$MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME.createIndex(
                     { 'scheduledStartTime': 1 },
                   );
