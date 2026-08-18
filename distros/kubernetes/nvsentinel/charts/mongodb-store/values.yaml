@@ -48,17 +48,26 @@ collectionExpirySeconds: 2592000
 #       persistenceSize: "100Gi"
 # Or: --set mongodb-store.global.persistenceSize=100Gi
 #
-# PVC RESIZE ON UPGRADE (manual intervention required):
+# PVC SIZE ON UPGRADE vs FRESH INSTALL (issue #1601):
 # Changing this value does NOT automatically grow existing Bound PVCs.
-# StatefulSet volumeClaimTemplates are effectively immutable for size on
-# already-created claims. After raising global.persistenceSize:
+# StatefulSet volumeClaimTemplates are immutable for size after the
+# StatefulSet exists. A Helm/ArgoCD upgrade that changes persistenceSize
+# is rejected by Kubernetes:
+#   StatefulSet.apps "mongodb" is invalid: spec: Forbidden: updates to
+#   statefulset spec for fields other than 'replicas', 'ordinals',
+#   'template', ... are forbidden
+# Existing Bound PVCs keep their original request/capacity.
+#
+# To grow disks on an existing install (do not delete PVCs to "resize"):
 #   1. Confirm StorageClass allows expansion (allowVolumeExpansion: true).
 #   2. Patch each data PVC (e.g. datadir-mongodb-0) resources.requests.storage
-#      to the new size — do not delete PVCs to "resize".
+#      to the new size.
 #   3. Wait until PVC status.conditions shows FileSystemResizePending cleared /
 #      capacity matches (CSI expands the volume; pod restart may be needed).
 #   4. Shrinking is not supported; plan capacity up-front.
-# Fresh installs pick up the new size with no extra steps.
+#
+# Fresh install (or delete leftover Retain PVCs, then reinstall) creates
+# PVCs at global.persistenceSize with no extra steps.
 #
 # TTL CHANGE ON HELM CLI UPGRADE:
 # The setup Job has no helm.sh/hook (ArgoCD delete-safe). Helm will not
