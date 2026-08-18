@@ -37,22 +37,35 @@ usePerconaOperator: false
 # Valid range: 0–2147483647 (MongoDB int32); invalid values fail Helm render.
 collectionExpirySeconds: 2592000
 
-# MongoDB PVC / manual-PV size (issue #1601). Default 8Gi is for development only.
+# MongoDB PVC / manual-PV size (issue #1601). Sole source of truth.
+# Default 8Gi is for development only — size for production write rate × TTL.
 #
-# Authoritative: global.persistenceSize — Bitnami, Percona, and manual PVs all
-# read this (Helm only shares parent→subchart via global).
+# Set only global.persistenceSize. Helm shares parent→subchart via global, so
+# Bitnami StatefulSet PVCs, Percona volumeSpec, and manual-mode PVs all read it.
 #
-# Optional: persistence.size — parent-only fallback for manual PVs when
-# global.persistenceSize is unset/empty. Left empty so its default cannot
-# shadow global and diverge from PVC sizing.
+#   mongodb-store:
+#     global:
+#       persistenceSize: "100Gi"
+# Or: --set mongodb-store.global.persistenceSize=100Gi
 #
-# Prefer:
-#   global: { persistenceSize: "12Gi" }
-#   mongodb: { persistence: { size: "12Gi" } }   # Bitnami nested fallback
-# Or --set global.persistenceSize=12Gi --set mongodb.persistence.size=12Gi
-persistence:
-  size: ""
-
+# PVC RESIZE ON UPGRADE (manual intervention required):
+# Changing this value does NOT automatically grow existing Bound PVCs.
+# StatefulSet volumeClaimTemplates are effectively immutable for size on
+# already-created claims. After raising global.persistenceSize:
+#   1. Confirm StorageClass allows expansion (allowVolumeExpansion: true).
+#   2. Patch each data PVC (e.g. datadir-mongodb-0) resources.requests.storage
+#      to the new size — do not delete PVCs to "resize".
+#   3. Wait until PVC status.conditions shows FileSystemResizePending cleared /
+#      capacity matches (CSI expands the volume; pod restart may be needed).
+#   4. Shrinking is not supported; plan capacity up-front.
+# Fresh installs pick up the new size with no extra steps.
+#
+# TTL CHANGE ON HELM CLI UPGRADE:
+# The setup Job has no helm.sh/hook (ArgoCD delete-safe). Helm will not
+# recreate an existing Job. Before `helm upgrade` when changing
+# collectionExpirySeconds, delete the Job so it is recreated and collMod
+# runs: kubectl -n <ns> delete job create-mongodb-database --ignore-not-found
+# ArgoCD sync uses Force=true,Replace=true and does this automatically.
 global:
   persistenceSize: "8Gi"
 
@@ -133,9 +146,8 @@ mongodb:
   
   persistence:
     resourcePolicy: "keep"
-    # Bitnami nested fallback when global.persistenceSize is unset; keep equal
-    # to global.persistenceSize when overriding.
-    size: "8Gi"
+    # size is intentionally unset here — PVC size comes only from
+    # global.persistenceSize (see top of this file).
   
   automountServiceAccountToken: true
   
@@ -322,10 +334,9 @@ psmdb-db:
       volumeSpec:
         pvc:
           resources:
-            requests:
-              # Nested fallback when global.persistenceSize is unset; keep equal
-              # to global.persistenceSize when overriding.
-              storage: "8Gi"
+            requests: {}
+            # storage is set only from global.persistenceSize in
+            # charts/psmdb-db/templates/cluster.yaml — do not duplicate here.
       nodeSelector: {}
       tolerations: []
       podDisruptionBudget:

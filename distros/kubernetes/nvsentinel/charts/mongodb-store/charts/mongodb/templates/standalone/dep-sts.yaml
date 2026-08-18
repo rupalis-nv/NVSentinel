@@ -489,7 +489,7 @@ spec:
         {{- end }}
         resources:
           requests:
-            storage: {{ .Values.global.persistenceSize | default .Values.persistence.size | quote }}
+            storage: {{ .Values.global.persistenceSize | default "8Gi" | quote }}
         {{- if .Values.persistence.volumeClaimTemplates.selector }}
         selector: {{- include "common.tplvalues.render" (dict "value" .Values.persistence.volumeClaimTemplates.selector "context" $) | nindent 10 }}
         {{- end }}

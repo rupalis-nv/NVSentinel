@@ -1,9 +1,9 @@
 {{/*
-MongoDB PVC / manual-PV size. Same source order as Bitnami/Percona PVCs:
-global.persistenceSize (authoritative), then optional persistence.size, then 8Gi.
+MongoDB PVC / manual-PV size. Sole source of truth: global.persistenceSize
+(default 8Gi). Bitnami, Percona, and manual PVs all use this helper/value.
 */}}
 {{- define "mongodb-store.persistenceSize" -}}
-{{- coalesce .Values.global.persistenceSize .Values.persistence.size "8Gi" -}}
+{{- .Values.global.persistenceSize | default "8Gi" -}}
 {{- end }}
 
 {{/*

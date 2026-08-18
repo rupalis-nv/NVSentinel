@@ -1469,11 +1469,14 @@ mongodb-store:
   # Valid range: 0–2147483647 (invalid values fail Helm render / schema validation).
   collectionExpirySeconds: 2592000
 
-  # MongoDB PVC size — global.persistenceSize is authoritative (Bitnami/Percona
-  # + manual PVs). persistence.size is an optional parent-only fallback when
-  # global.persistenceSize is unset; leave empty so it cannot shadow global.
-  persistence:
-    size: ""
+  # MongoDB PVC size — sole source of truth for Bitnami, Percona, and manual PVs.
+  # Default 8Gi is for development only.
+  #
+  # PVC RESIZE ON UPGRADE requires manual steps (chart value alone is not enough):
+  #   1. StorageClass must have allowVolumeExpansion: true
+  #   2. Patch each Bound data PVC to the new storage request
+  #   3. Wait for CSI expansion; restart MongoDB pods if filesystem resize is pending
+  #   4. Shrinking is unsupported — size up-front on fresh install when possible
   global:
     persistenceSize: "8Gi"
 
@@ -1482,11 +1485,6 @@ mongodb-store:
     # Number of MongoDB replicas
     # Recommend 1 for development, 3 for production
     replicaCount: 1
-
-    # Bitnami nested fallback when global.persistenceSize is unset; keep equal
-    # to global.persistenceSize above when overriding.
-    persistence:
-      size: "8Gi"
 
     # Node selector for MongoDB pods
     # Example - run on control plane:

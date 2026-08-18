@@ -57,10 +57,13 @@ kind: Job
 metadata:
   name: create-mongodb-database
   annotations:
+    # ArgoCD: Force/Replace recreates this immutable Job when the template
+    # changes (e.g. checksum/collection-expiry). Avoid helm.sh/hook here —
+    # Helm hooks have caused ArgoCD Application delete/sync stuck states
+    # (hook-finalizer / BeforeHookCreation). Match live nvsentinel pattern.
     argocd.argoproj.io/sync-options: Force=true,Replace=true
-    # Re-run on install/upgrade so collectionExpirySeconds changes apply to existing TTL indexes.
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-delete-policy: before-hook-creation
+    # Changes when collectionExpirySeconds changes so ArgoCD/Helm see a diff
+    # and Replace recreates the Job to collMod TTL indexes.
     checksum/collection-expiry: {{ include "mongodb-store.collectionExpirySeconds" . | toString | sha256sum }}
 spec:
   activeDeadlineSeconds: 600
