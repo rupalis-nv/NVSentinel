@@ -1464,27 +1464,14 @@ janitor:
 # Required by: fault-quarantine, node-drainer, fault-remediation
 ################################################################################
 mongodb-store:
-  # HealthEvents TTL (expireAfterSeconds). Default 30 days; reduce for production
-  # write rates (e.g. 604800 = 7 days) to limit collection growth / HEA latency.
-  # Valid range: 0–2147483647 (invalid values fail Helm render / schema validation).
-  #
-  # Applies to in-cluster MongoDB and to external MongoDB
-  # (global.mongodbStore.enabled: false with global.datastore.provider: mongodb).
-  # The setup Job name includes this value so helm upgrade / ArgoCD sync
-  # recreates it and collMod's existing TTL indexes (createIndex alone conflicts).
+  # TTL expireAfterSeconds. Default 2592000 (30d); production often 604800 (7d).
+  # In-cluster and external Mongo. Job name includes this value so helm/argo rerun collMod.
   collectionExpirySeconds: 2592000
 
   # MongoDB replica configuration
   mongodb:
-    # PVC size (Bitnami). Default 8Gi is for development only.
-    # Percona installs use:
-    #   mongodb-store.psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage
-    #
-    # PVC RESIZE ON UPGRADE requires manual steps (chart value alone is not enough):
-    #   1. StorageClass must have allowVolumeExpansion: true
-    #   2. Patch each Bound data PVC to the new storage request
-    #   3. Wait for CSI expansion; restart MongoDB pods if filesystem resize is pending
-    #   4. Shrinking is unsupported — size up-front on fresh install when possible
+    # Bitnami PVC size (default 8Gi). Percona: psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage
+    # Existing Bound PVCs do not grow on upgrade.
     persistence:
       size: "8Gi"
 

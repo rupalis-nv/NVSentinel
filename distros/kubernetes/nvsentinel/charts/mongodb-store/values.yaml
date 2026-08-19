@@ -31,60 +31,15 @@
 useBitnami: true
 usePerconaOperator: false
 
-# HealthEvents / MaintenanceEvents TTL index expireAfterSeconds.
-# Default 2592000 = 30 days. Operators should reduce for production write rates
-# (e.g. 604800 = 7 days) to shrink collection size and HEA query latency.
-# Valid range: 0–2147483647 (MongoDB int32); invalid values fail Helm render.
-# Unset/null defaults to 2592000 — do not rely on int(nil)=0; that would make
-# MongoDB delete matching documents immediately.
-#
-# This value is also used for external MongoDB (mongodb-store chart not
-# deployed): set mongodb-store.collectionExpirySeconds in the parent chart.
-#
-# Changing this recreates the setup Job. The Job name is
-# create-mongodb-database-<seconds> and completed Jobs are GC'd via
-# ttlSecondsAfterFinished. Helm and ArgoCD treat the new name as a create,
-# so collMod runs without deleting the Job first and without Force/Replace.
-# Find the Job with: -l app.kubernetes.io/name=create-mongodb-database
+# TTL expireAfterSeconds. Default 2592000 (30d); production often 604800 (7d).
+# Also used for external Mongo. Unset/null → 2592000 (int(nil) is 0, immediate expiry).
+# Job name is create-mongodb-database-<seconds> (-l app.kubernetes.io/name=create-mongodb-database).
 collectionExpirySeconds: 2592000
 
-# MongoDB PVC / manual-PV size (issue #1601).
-# Default 8Gi is for development only — size for production write rate × TTL.
-#
-# useBitnami and usePerconaOperator are mutually exclusive, so set the
-# backend-native key for the backend you run. Do not patch vendored
-# Bitnami/Percona templates; those charts already honor these values:
-#
-#   Bitnami:
-#     mongodb-store.mongodb.persistence.size
-#     --set mongodb-store.mongodb.persistence.size=100Gi
-#   Percona:
-#     mongodb-store.psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage
-#     --set mongodb-store.psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage=100Gi
-#
-# Chart defaults below are YAML-anchored together so they stay in sync.
-# Hidden / non-voting volumes use the same native keys on those charts.
-#
-# PVC SIZE ON UPGRADE vs FRESH INSTALL (issue #1601):
-# Changing this value does NOT automatically grow existing Bound PVCs.
-# StatefulSet volumeClaimTemplates are immutable for size after the
-# StatefulSet exists. A Helm/ArgoCD upgrade that changes the size
-# is rejected by Kubernetes:
-#   StatefulSet.apps "mongodb" is invalid: spec: Forbidden: updates to
-#   statefulset spec for fields other than 'replicas', 'ordinals',
-#   'template', ... are forbidden
-# Existing Bound PVCs keep their original request/capacity.
-#
-# To grow disks on an existing install (do not delete PVCs to "resize"):
-#   1. Confirm StorageClass allows expansion (allowVolumeExpansion: true).
-#   2. Patch each data PVC (e.g. datadir-mongodb-0) resources.requests.storage
-#      to the new size.
-#   3. Wait until PVC status.conditions shows FileSystemResizePending cleared /
-#      capacity matches (CSI expands the volume; pod restart may be needed).
-#   4. Shrinking is not supported; plan capacity up-front.
-#
-# Fresh install (or delete leftover Retain PVCs, then reinstall) creates
-# PVCs at the configured size with no extra steps.
+# PVC size. Default 8Gi is for development.
+# Bitnami: mongodb.persistence.size
+# Percona: psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage
+# Existing Bound PVCs do not grow on helm upgrade (StatefulSet VCT is immutable).
 
 # SCRAM application user (created when mongodb.tls.enabled is false).
 # Instead of X.509 cert-based users, the Job creates a SCRAM-SHA-256 user

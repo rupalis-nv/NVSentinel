@@ -1,10 +1,5 @@
 {{/*
-Validated HealthEvents/MaintenanceEvents TTL expireAfterSeconds.
-Reads mongodb-store.collectionExpirySeconds so in-cluster and external Mongo
-share one knob (the mongodb-store subchart is not rendered when
-global.mongodbStore.enabled is false, but its values remain settable).
-Nil/empty defaults to 2592000 before int-cast (int(nil) is 0, which would
-expire documents immediately). Explicit 0 is still allowed.
+TTL from mongodb-store.collectionExpirySeconds (works when the subchart is disabled). Nil → 2592000.
 */}}
 {{- define "nvsentinel.collectionExpirySeconds" -}}
 {{- $store := index .Values "mongodb-store" | default dict -}}

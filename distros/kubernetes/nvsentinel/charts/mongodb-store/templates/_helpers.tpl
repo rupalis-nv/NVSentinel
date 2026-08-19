@@ -1,7 +1,5 @@
 {{/*
-MongoDB PVC / manual-PV size from the backend-native values (issue #1601).
-Do not invent a global override — Bitnami and Percona already expose size
-through their own keys, and useBitnami / usePerconaOperator are mutually exclusive.
+Manual-PV size: mongodb.persistence.size, or Percona rs0 volumeSpec when usePerconaOperator.
 */}}
 {{- define "mongodb-store.persistenceSize" -}}
 {{- if .Values.usePerconaOperator -}}
@@ -12,10 +10,7 @@ through their own keys, and useBitnami / usePerconaOperator are mutually exclusi
 {{- end }}
 
 {{/*
-Validated HealthEvents/MaintenanceEvents TTL expireAfterSeconds.
-Nil/empty defaults to 2592000 (30 days) before int-cast: sprig int(nil) is 0,
-and expireAfterSeconds: 0 makes MongoDB delete matching documents immediately.
-Explicit 0 is still allowed. Range is 0–2147483647 (MongoDB int32).
+TTL expireAfterSeconds. Nil/empty → 2592000. int(nil) is 0 (immediate expiry). Range 0–2147483647.
 */}}
 {{- define "mongodb-store.collectionExpirySeconds" -}}
 {{- $raw := .Values.collectionExpirySeconds -}}
@@ -30,8 +25,7 @@ Explicit 0 is still allowed. Range is 0–2147483647 (MongoDB int32).
 {{- end }}
 
 {{/*
-Setup Job name. Includes the TTL so Helm/ArgoCD treat a collectionExpirySeconds
-change as a new Job (create) instead of patching annotations on a completed Job.
+create-mongodb-database-<ttl> so a TTL change is a new Job, not a patch on a completed one.
 */}}
 {{- define "mongodb-store.initJobName" -}}
 {{- printf "create-mongodb-database-%s" (include "mongodb-store.collectionExpirySeconds" . | toString) | trunc 63 -}}

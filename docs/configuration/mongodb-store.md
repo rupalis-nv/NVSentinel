@@ -109,7 +109,7 @@ kubectl get perconaservermongodb -n {namespace}
 kubectl get pods -n {namespace} -l app.kubernetes.io/component=mongod
 ```
 
-The `perconaservermongodb` resource must reach the `ready` state and the MongoDB init Job (`create-mongodb-database-<seconds>`, label `app.kubernetes.io/name=create-mongodb-database`) must complete.
+The `perconaservermongodb` resource must reach `ready`, and the init Job (`-l app.kubernetes.io/name=create-mongodb-database`) must complete.
 
 ## Configuration Reference
 
@@ -125,7 +125,7 @@ global:
 
 ### Volume size (Bitnami)
 
-Set the data PVC size with the Bitnami chart's own key. Default `8Gi` is for development only — size for production write rate × TTL.
+`mongodb.persistence.size` (default `8Gi`). Percona: `psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage`. Existing PVCs do not grow on upgrade.
 
 ```yaml
 mongodb-store:
@@ -134,21 +134,9 @@ mongodb-store:
       size: "100Gi"
 ```
 
-Changing this on an existing install does not grow Bound PVCs. StatefulSet `volumeClaimTemplates` are immutable for size; Kubernetes rejects the upgrade. To grow: confirm `allowVolumeExpansion: true`, patch each `datadir-mongodb-*` PVC, wait for CSI expansion. Shrinking is not supported. A fresh install (or delete leftover Retain PVCs, then reinstall) creates PVCs at the configured size.
-
-For Percona, use `mongodb-store.psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage` (see [Volume size](#volume-size) above).
-
 ### HealthEvents TTL
 
-`mongodb-store.collectionExpirySeconds` is MongoDB `expireAfterSeconds` for HealthEvents (`createdAt`) and MaintenanceEvents (`actualEndTime`). Default `2592000` (30 days). Unset/null falls back to that default; do not leave the value missing in a way that renders as `0` — MongoDB treats `expireAfterSeconds: 0` as “delete immediately”.
-
-The same key applies to **external** MongoDB (`global.mongodbStore.enabled: false` with `global.datastore.provider: mongodb`). The mongodb-store chart is not deployed in that mode, but parent templates still read this value.
-
-Changing the TTL creates a new setup Job named `create-mongodb-database-<seconds>` (external: `<release>-external-mongodb-setup-<seconds>`). Helm and ArgoCD create the new Job; they do not patch a completed Job in place. Find it with:
-
-```bash
-kubectl get job -n <namespace> -l app.kubernetes.io/name=create-mongodb-database
-```
+`collectionExpirySeconds` (default `2592000` / 30d). Same key for external Mongo. A change creates Job `create-mongodb-database-<seconds>` (`-l app.kubernetes.io/name=create-mongodb-database`).
 
 ```yaml
 mongodb-store:

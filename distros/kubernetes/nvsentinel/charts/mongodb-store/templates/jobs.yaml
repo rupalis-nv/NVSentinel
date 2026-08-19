@@ -55,10 +55,7 @@ subjects:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  # Name includes the TTL so a collectionExpirySeconds change is a new Job.
-  # Helm and ArgoCD create it; they do not patch a completed Job in place.
-  # Find it with: -l app.kubernetes.io/name=create-mongodb-database
-  # Do not use helm.sh/hook - Helm hooks have stuck ArgoCD Application deletes.
+  # Name includes TTL so a change creates a new Job. Label: create-mongodb-database
   name: {{ include "mongodb-store.initJobName" . }}
   labels:
     app.kubernetes.io/name: create-mongodb-database
@@ -291,8 +288,7 @@ spec:
                     print('Collection already exists: $MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME');
                   }
                   
-                  // TTL indexes: create if missing, collMod expireAfterSeconds when
-                  // collectionExpirySeconds changes (createIndex alone conflicts on options).
+                  // createIndex if missing; collMod if expireAfterSeconds changed
                   function ensureTTL(collName, field) {
                     var secs = Number($MONGODB_COLLECTION_EXPIRY_SECONDS);
                     var key = {};

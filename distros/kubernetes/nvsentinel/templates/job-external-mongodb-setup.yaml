@@ -158,8 +158,7 @@ spec:
                   }
                 });
 
-                // TTL indexes: create if missing, collMod expireAfterSeconds when
-                // collectionExpirySeconds changes (createIndex alone conflicts on options).
+                // createIndex if missing; collMod if expireAfterSeconds changed
                 function ensureTTL(collName, field) {
                   var secs = Number($MONGODB_COLLECTION_EXPIRY_SECONDS);
                   var key = {};
