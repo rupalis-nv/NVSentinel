@@ -55,17 +55,17 @@ subjects:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: create-mongodb-database
-  annotations:
-    # ArgoCD: Force/Replace recreates this immutable Job when the template
-    # changes (e.g. checksum/collection-expiry). Avoid helm.sh/hook here —
-    # Helm hooks have caused ArgoCD Application delete/sync stuck states
-    # (hook-finalizer / BeforeHookCreation). Match live nvsentinel pattern.
-    argocd.argoproj.io/sync-options: Force=true,Replace=true
-    # Changes when collectionExpirySeconds changes so ArgoCD/Helm see a diff
-    # and Replace recreates the Job to collMod TTL indexes.
-    checksum/collection-expiry: {{ include "mongodb-store.collectionExpirySeconds" . | toString | sha256sum }}
+  # Name includes the TTL so a collectionExpirySeconds change is a new Job.
+  # Helm and ArgoCD create it; they do not patch a completed Job in place.
+  # Find it with: -l app.kubernetes.io/name=create-mongodb-database
+  # Do not use helm.sh/hook - Helm hooks have stuck ArgoCD Application deletes.
+  name: {{ include "mongodb-store.initJobName" . }}
+  labels:
+    app.kubernetes.io/name: create-mongodb-database
+    app.kubernetes.io/component: mongodb-init
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
+  ttlSecondsAfterFinished: 86400
   activeDeadlineSeconds: 600
   template:
     spec:

@@ -1,4 +1,25 @@
 {{/*
+Validated HealthEvents/MaintenanceEvents TTL expireAfterSeconds.
+Reads mongodb-store.collectionExpirySeconds so in-cluster and external Mongo
+share one knob (the mongodb-store subchart is not rendered when
+global.mongodbStore.enabled is false, but its values remain settable).
+Nil/empty defaults to 2592000 before int-cast (int(nil) is 0, which would
+expire documents immediately). Explicit 0 is still allowed.
+*/}}
+{{- define "nvsentinel.collectionExpirySeconds" -}}
+{{- $store := index .Values "mongodb-store" | default dict -}}
+{{- $raw := index $store "collectionExpirySeconds" -}}
+{{- if or (kindIs "invalid" $raw) (eq ($raw | toString) "") -}}
+{{- $raw = 2592000 -}}
+{{- end -}}
+{{- $v := int $raw -}}
+{{- if or (lt $v 0) (gt $v 2147483647) -}}
+{{- fail (printf "mongodb-store.collectionExpirySeconds must be an integer from 0 through 2147483647, got %v" $raw) -}}
+{{- end -}}
+{{- $v -}}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "nvsentinel.name" -}}

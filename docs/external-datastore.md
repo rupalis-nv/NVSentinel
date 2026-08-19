@@ -212,7 +212,10 @@ runs the `nvsentinel-external-mongodb-setup` Job which:
 
 - Creates the `HealthEventsDatabase` database (MongoDB creates it lazily on first write)
 - Creates the `HealthEvents`, `ResumeTokens`, and `MaintenanceEvents` collections if they don't exist
-- Creates TTL indexes (auto-expire old events) and query indexes on all collections
+- Creates TTL indexes (auto-expire old events) and query indexes on all collections.
+  TTL `expireAfterSeconds` comes from `mongodb-store.collectionExpirySeconds` (default 2592000).
+  Changing that value recreates the setup Job so existing indexes are updated with `collMod`
+  instead of failing with `IndexOptionsConflict`.
 
 All you need is a cluster endpoint and a database user with read/write access.
 

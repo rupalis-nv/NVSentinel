@@ -7,7 +7,7 @@
       "minimum": 0,
       "maximum": 2147483647,
       "title": "HealthEvents / MaintenanceEvents TTL expireAfterSeconds",
-      "description": "MongoDB TTL index expireAfterSeconds for HealthEvents.createdAt and MaintenanceEvents.actualEndTime. Must be an integer from 0 through 2147483647 (int32).",
+      "description": "MongoDB TTL index expireAfterSeconds for HealthEvents.createdAt and MaintenanceEvents.actualEndTime. Must be an integer from 0 through 2147483647 (int32). Unset/null defaults to 2592000; do not render as 0 accidentally (MongoDB would delete documents immediately).",
       "default": 2592000
     }
   }

@@ -253,11 +253,7 @@ spec:
         {{- end }}
       {{- else if $replset.volumeSpec.pvc }}
       persistentVolumeClaim:
-{{- $pvc := deepCopy $replset.volumeSpec.pvc }}
-{{- if not $pvc.resources }}{{- $_ := set $pvc "resources" (dict) -}}{{- end }}
-{{- if not $pvc.resources.requests }}{{- $_ := set $pvc.resources "requests" (dict) -}}{{- end }}
-{{- $_ := set $pvc.resources.requests "storage" ($.Values.global.persistenceSize | default "8Gi") }}
-{{ $pvc | toYaml | indent 8 }}
+{{ $replset.volumeSpec.pvc | toYaml | indent 8 }}
       {{- else }}
       emptyDir: {}
       {{- end }}

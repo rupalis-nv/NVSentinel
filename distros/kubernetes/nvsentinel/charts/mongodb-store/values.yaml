@@ -35,23 +35,40 @@ usePerconaOperator: false
 # Default 2592000 = 30 days. Operators should reduce for production write rates
 # (e.g. 604800 = 7 days) to shrink collection size and HEA query latency.
 # Valid range: 0–2147483647 (MongoDB int32); invalid values fail Helm render.
+# Unset/null defaults to 2592000 — do not rely on int(nil)=0; that would make
+# MongoDB delete matching documents immediately.
+#
+# This value is also used for external MongoDB (mongodb-store chart not
+# deployed): set mongodb-store.collectionExpirySeconds in the parent chart.
+#
+# Changing this recreates the setup Job. The Job name is
+# create-mongodb-database-<seconds> and completed Jobs are GC'd via
+# ttlSecondsAfterFinished. Helm and ArgoCD treat the new name as a create,
+# so collMod runs without deleting the Job first and without Force/Replace.
+# Find the Job with: -l app.kubernetes.io/name=create-mongodb-database
 collectionExpirySeconds: 2592000
 
-# MongoDB PVC / manual-PV size (issue #1601). Sole source of truth.
+# MongoDB PVC / manual-PV size (issue #1601).
 # Default 8Gi is for development only — size for production write rate × TTL.
 #
-# Set only global.persistenceSize. Helm shares parent→subchart via global, so
-# Bitnami StatefulSet PVCs, Percona volumeSpec, and manual-mode PVs all read it.
+# useBitnami and usePerconaOperator are mutually exclusive, so set the
+# backend-native key for the backend you run. Do not patch vendored
+# Bitnami/Percona templates; those charts already honor these values:
 #
-#   mongodb-store:
-#     global:
-#       persistenceSize: "100Gi"
-# Or: --set mongodb-store.global.persistenceSize=100Gi
+#   Bitnami:
+#     mongodb-store.mongodb.persistence.size
+#     --set mongodb-store.mongodb.persistence.size=100Gi
+#   Percona:
+#     mongodb-store.psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage
+#     --set mongodb-store.psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage=100Gi
+#
+# Chart defaults below are YAML-anchored together so they stay in sync.
+# Hidden / non-voting volumes use the same native keys on those charts.
 #
 # PVC SIZE ON UPGRADE vs FRESH INSTALL (issue #1601):
 # Changing this value does NOT automatically grow existing Bound PVCs.
 # StatefulSet volumeClaimTemplates are immutable for size after the
-# StatefulSet exists. A Helm/ArgoCD upgrade that changes persistenceSize
+# StatefulSet exists. A Helm/ArgoCD upgrade that changes the size
 # is rejected by Kubernetes:
 #   StatefulSet.apps "mongodb" is invalid: spec: Forbidden: updates to
 #   statefulset spec for fields other than 'replicas', 'ordinals',
@@ -67,16 +84,7 @@ collectionExpirySeconds: 2592000
 #   4. Shrinking is not supported; plan capacity up-front.
 #
 # Fresh install (or delete leftover Retain PVCs, then reinstall) creates
-# PVCs at global.persistenceSize with no extra steps.
-#
-# TTL CHANGE ON HELM CLI UPGRADE:
-# The setup Job has no helm.sh/hook (ArgoCD delete-safe). Helm will not
-# recreate an existing Job. Before `helm upgrade` when changing
-# collectionExpirySeconds, delete the Job so it is recreated and collMod
-# runs: kubectl -n <ns> delete job create-mongodb-database --ignore-not-found
-# ArgoCD sync uses Force=true,Replace=true and does this automatically.
-global:
-  persistenceSize: "8Gi"
+# PVCs at the configured size with no extra steps.
 
 # SCRAM application user (created when mongodb.tls.enabled is false).
 # Instead of X.509 cert-based users, the Job creates a SCRAM-SHA-256 user
@@ -155,8 +163,7 @@ mongodb:
   
   persistence:
     resourcePolicy: "keep"
-    # size is intentionally unset here — PVC size comes only from
-    # global.persistenceSize (see top of this file).
+    size: &persistenceSize "8Gi"
   
   automountServiceAccountToken: true
   
@@ -343,9 +350,8 @@ psmdb-db:
       volumeSpec:
         pvc:
           resources:
-            requests: {}
-            # storage is set only from global.persistenceSize in
-            # charts/psmdb-db/templates/cluster.yaml — do not duplicate here.
+            requests:
+              storage: *persistenceSize
       nodeSelector: {}
       tolerations: []
       podDisruptionBudget:
