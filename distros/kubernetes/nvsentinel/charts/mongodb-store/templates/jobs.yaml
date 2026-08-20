@@ -61,6 +61,10 @@ metadata:
     app.kubernetes.io/name: create-mongodb-database
     app.kubernetes.io/component: mongodb-init
     app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    # Argo: recreate this immutable Job on sync if the first run Failed and TTL
+    # did not change. Do not add helm.sh/hook (stuck Argo Application deletes).
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   ttlSecondsAfterFinished: 86400
   activeDeadlineSeconds: 600
