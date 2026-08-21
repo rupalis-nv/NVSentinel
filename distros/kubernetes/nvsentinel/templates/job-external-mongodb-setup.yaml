@@ -69,6 +69,9 @@ metadata:
     app.kubernetes.io/name: external-mongodb-setup
     app.kubernetes.io/component: mongodb-init
   annotations:
+    # Argo: recreate this immutable Job on sync if the first run Failed and TTL
+    # did not change. helm.sh/hook was already on this Job on main.
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
