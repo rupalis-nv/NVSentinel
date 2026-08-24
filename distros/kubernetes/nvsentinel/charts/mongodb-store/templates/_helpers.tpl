@@ -34,10 +34,13 @@ Strings must be base-10 digits; range 0–2147483647 is checked before int for s
 {{- end }}
 
 {{/*
-create-mongodb-database-<ttl> so a TTL change is a new Job, not a patch on a completed one.
+create-mongodb-database-<ttl>-<scriptHash> so a TTL or init-script change
+(new index, etc.) is a new Job, not a patch on a completed one.
 */}}
 {{- define "mongodb-store.initJobName" -}}
-{{- printf "create-mongodb-database-%s" (include "mongodb-store.collectionExpirySeconds" . | toString) | trunc 63 -}}
+{{- $ttl := include "mongodb-store.collectionExpirySeconds" . | toString -}}
+{{- $hash := include "mongodb-store.initEval" . | sha256sum | trunc 8 -}}
+{{- printf "create-mongodb-database-%s-%s" $ttl $hash | trunc 63 -}}
 {{- end }}
 
 {{/*

@@ -136,7 +136,9 @@ mongodb-store:
 
 ### HealthEvents TTL
 
-`collectionExpirySeconds` (default `2592000` / 30d). Same key for external Mongo. A change creates Job `create-mongodb-database-<seconds>` (`-l app.kubernetes.io/name=create-mongodb-database`).
+`collectionExpirySeconds` (default `2592000` / 30d). Same key for external Mongo. The init Job is `create-mongodb-database-<seconds>-<scriptHash>` (`-l app.kubernetes.io/name=create-mongodb-database`).
+
+A completed Job is immutable. TTL and a hash of the mongosh init script are in the Job name so Helm/Argo create a new Job when expiry or indexes change. Argo also has `Force=true,Replace=true` so a Failed first run is recreated on sync. For Helm, if you need to rerun the same script, delete the Job by that label and upgrade.
 
 ```yaml
 mongodb-store:

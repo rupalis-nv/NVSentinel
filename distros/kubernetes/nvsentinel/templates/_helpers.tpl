@@ -24,6 +24,16 @@ Nil/empty → 2592000. Strings must be base-10 digits in 0–2147483647 (int("ab
 {{- end }}
 
 {{/*
+<release>-external-mongodb-setup-<ttl>-<scriptHash> so a TTL or init-script
+change is a new Job, not a patch on a completed one.
+*/}}
+{{- define "nvsentinel.externalMongoInitJobName" -}}
+{{- $ttl := include "nvsentinel.collectionExpirySeconds" . | toString -}}
+{{- $hash := include "nvsentinel.externalMongoInitEval" . | sha256sum | trunc 8 -}}
+{{- printf "%s-external-mongodb-setup-%s-%s" .Release.Name $ttl $hash | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "nvsentinel.name" -}}
