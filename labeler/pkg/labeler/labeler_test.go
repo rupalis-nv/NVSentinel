@@ -31,9 +31,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	listersv1 "k8s.io/client-go/listers/core/v1"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -2530,4 +2532,112 @@ func TestUpdateNodeLabelsForPod_ManagedGate(t *testing.T) {
 		assert.NotContains(t, updated.Labels, DriverInstalledLabel,
 			"lister error must not stamp labels on node")
 	})
+}
+
+// newLabelerWithCachedDriverPods builds a Labeler with manually controlled informer
+// stores. The driver pods exist only in the pod cache, allowing the test to represent
+// a cache that has not yet observed their deletion.
+func newLabelerWithCachedDriverPods(t *testing.T, node *corev1.Node,
+	cachedDriverPods ...*corev1.Pod) (*Labeler, kubernetes.Interface) {
+	t.Helper()
+
+	podInformer := cache.NewSharedIndexInformer(&cache.ListWatch{}, &corev1.Pod{}, 0, cache.Indexers{
+		NodeDCGMIndex:   podNodeIndexerByLabel("app", "nvidia-dcgm"),
+		NodeDriverIndex: podNodeIndexerByLabel("app", "nvidia-driver-daemonset"),
+	})
+
+	for _, pod := range cachedDriverPods {
+		require.NoError(t, podInformer.GetIndexer().Add(pod))
+	}
+
+	nodeInformer := cache.NewSharedIndexInformer(&cache.ListWatch{}, &corev1.Node{}, 0, cache.Indexers{})
+	require.NoError(t, nodeInformer.GetStore().Add(node))
+
+	emptyPodInformer := func(index string, indexFunc cache.IndexFunc) cache.SharedIndexInformer {
+		return cache.NewSharedIndexInformer(&cache.ListWatch{}, &corev1.Pod{}, 0,
+			cache.Indexers{index: indexFunc})
+	}
+
+	clientset := fake.NewSimpleClientset(node)
+
+	return &Labeler{
+		ctx:          context.Background(),
+		clientset:    clientset,
+		podInformer:  podInformer,
+		nodeInformer: nodeInformer,
+		nodeLister:   listersv1.NewNodeLister(nodeInformer.GetIndexer()),
+		crdDriverInformer: emptyPodInformer(NodeDriverIndex,
+			podNodeIndexerByLabel(driverComponentLabel, driverComponentValue)),
+		gkeInstallerInformer: emptyPodInformer(NodeGKEDriverInstallerIndex,
+			podNodeIndexerByLabel("k8s-app", "nvidia-driver-installer")),
+		// Pod-derived labels are reconciled only after every informer has synced.
+		informersSynced: []cache.InformerSynced{func() bool { return true }},
+	}, clientset
+}
+
+// TestUpdateNodeLabels_DriverPodDeletedDuringReconcile_DeleteWins verifies that a
+// startup reconcile cannot overwrite a concurrent pod-deletion result.
+func TestUpdateNodeLabels_DriverPodDeletedDuringReconcile_DeleteWins(t *testing.T) {
+	const nodeName = "test-node"
+
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			Labels: map[string]string{
+				DriverInstalledLabel: LabelValueTrue,
+				KataEnabledLabel:     LabelValueFalse,
+			},
+		},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "driver-pod",
+			Namespace: "default",
+			UID:       "driver-pod-uid",
+			Labels:    map[string]string{"app": "nvidia-driver-daemonset"},
+		},
+		Spec: corev1.PodSpec{NodeName: nodeName},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+		},
+	}
+
+	l, clientset := newLabelerWithCachedDriverPods(t, node, pod)
+	fakeClient := clientset.(*fake.Clientset)
+
+	reconcileReadPodCache := make(chan struct{})
+	releaseReconcile := make(chan struct{})
+	var blocked atomic.Bool
+	fakeClient.PrependReactor("get", "nodes", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+		if blocked.CompareAndSwap(false, true) {
+			close(reconcileReadPodCache)
+			<-releaseReconcile
+		}
+
+		return false, nil, nil
+	})
+
+	reconcileDone := make(chan error, 1)
+	go func() { reconcileDone <- l.updateNodeLabels(nodeName) }()
+	<-reconcileReadPodCache
+
+	// Informer stores remove an object before invoking its delete handler.
+	require.NoError(t, l.podInformer.GetIndexer().Delete(pod))
+	deleteDone := make(chan error, 1)
+	go func() { deleteDone <- l.handlePodDeleteEvent(pod) }()
+
+	select {
+	case err := <-deleteDone:
+		t.Fatalf("pod deletion was not serialized with node reconciliation: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseReconcile)
+	require.NoError(t, <-reconcileDone)
+	require.NoError(t, <-deleteDone)
+
+	updated, err := clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, updated.Labels, DriverInstalledLabel)
 }
