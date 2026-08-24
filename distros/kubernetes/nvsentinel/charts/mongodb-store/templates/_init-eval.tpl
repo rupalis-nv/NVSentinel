@@ -29,7 +29,11 @@ if (!db.getCollectionNames().includes('$MONGODB_MAINTENANCE_EVENT_COLLECTION_NAM
 
 // createIndex if missing; collMod if expireAfterSeconds changed
 function ensureTTL(collName, field) {
-  var secs = Number($MONGODB_COLLECTION_EXPIRY_SECONDS);
+  var raw = '$MONGODB_COLLECTION_EXPIRY_SECONDS';
+  var secs = Number(raw);
+  if (raw === '' || !Number.isInteger(secs) || secs < 0) {
+    throw new Error('MONGODB_COLLECTION_EXPIRY_SECONDS must be a non-negative integer, got ' + JSON.stringify(raw));
+  }
   var key = {};
   key[field] = 1;
   var existing = db.getCollection(collName).getIndexes().find(function(idx) {
