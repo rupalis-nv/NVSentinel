@@ -134,11 +134,33 @@ mongodb-store:
       size: "100Gi"
 ```
 
+### Oplog size
+
+`oplogPercentOfVolume` (default `10`, range 1–50) sizes the replica-set oplog as a percent of the data PVC (`mongodb.persistence.size` or the Percona rs0 PVC). MongoDB's minimum is 990 MiB, so the default 8Gi volume yields 990 MiB, not 819 MiB. A 32Gi volume at 10% yields 3276 MiB (~3.2Gi).
+
+Do not hardcode a 15 GiB oplog: it does not fit the default 8Gi PVC. The original 24-hour target (~15120 MiB at ~500 events/s) needs about 148Gi at 10%, or a higher percent on a smaller disk. The in-cluster init Job runs `replSetResizeOplog` on every member. External Mongo is not resized.
+
+| PVC | 10% oplog | Approx. window at 500 events/s × ~350 B |
+| --- | --------- | --------------------------------------- |
+| 8Gi | 990 MiB | ~1.6 h |
+| 32Gi | 3276 MiB | ~5.4 h |
+| 148Gi | ~15 GiB | ~24 h |
+
+```yaml
+mongodb-store:
+  oplogPercentOfVolume: 10
+  mongodb:
+    persistence:
+      size: "32Gi"
+```
+
+A completed Job is immutable. Changing this percent or the PVC size changes the Job hash so Helm/Argo create a new Job.
+
 ### HealthEvents TTL
 
 `collectionExpirySeconds` (default `2592000` / 30d). Same key for external Mongo. The init Job is `create-mongodb-database-<seconds>-<scriptHash>` (`-l app.kubernetes.io/name=create-mongodb-database`).
 
-A completed Job is immutable. TTL and a hash of the mongosh init script are in the Job name so Helm/Argo create a new Job when expiry or indexes change. Argo also has `Force=true,Replace=true` so a Failed first run is recreated on sync. For Helm, if you need to rerun the same script, delete the Job by that label and upgrade.
+A completed Job is immutable. TTL, oplog size, and a hash of the mongosh init script are in the Job name so Helm/Argo create a new Job when expiry, oplog, or indexes change. Argo also has `Force=true,Replace=true` so a Failed first run is recreated on sync. For Helm, if you need to rerun the same script, delete the Job by that label and upgrade.
 
 ```yaml
 mongodb-store:

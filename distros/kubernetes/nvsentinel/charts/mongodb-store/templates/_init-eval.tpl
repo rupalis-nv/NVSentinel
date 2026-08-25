@@ -113,3 +113,23 @@ if (scramUser) {
 }
 {{- end }}
 {{- end }}
+
+{{/*
+replSetResizeOplog must run with directConnection against each member.
+WiredTiger stores capped size in metadata; mongod.conf oplogSizeMB is not enough
+on an existing replica set.
+*/}}
+{{- define "mongodb-store.oplogEval" -}}
+var raw = '$MONGODB_OPLOG_SIZE_MB';
+var mb = Number(raw);
+if (raw === '' || !Number.isInteger(mb) || mb < 990) {
+  throw new Error('MONGODB_OPLOG_SIZE_MB must be an integer >= 990, got ' + JSON.stringify(raw));
+}
+var hello = db.hello();
+print('Oplog resize on ' + (hello.me || 'unknown') + ' targetMB=' + mb);
+var res = db.adminCommand({ replSetResizeOplog: 1, size: mb });
+if (res.ok !== 1) {
+  throw new Error('replSetResizeOplog failed: ' + tojson(res));
+}
+print('Oplog resized to ' + mb + ' MB');
+{{- end }}

@@ -62,8 +62,8 @@ metadata:
     app.kubernetes.io/component: mongodb-init
     app.kubernetes.io/instance: {{ .Release.Name }}
   annotations:
-    # Argo: recreate this immutable Job on sync if the first run Failed and TTL
-    # did not change. Do not add helm.sh/hook (stuck Argo Application deletes).
+    # Argo: recreate this immutable Job on sync if the first run Failed and the
+    # name (TTL / oplog / script hash) did not change. Do not add helm.sh/hook.
     argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   ttlSecondsAfterFinished: 86400
@@ -248,6 +248,7 @@ spec:
             echo "MONGODB_DATABASE_NAME: $MONGODB_DATABASE_NAME"
             echo "MONGODB_COLLECTION_NAME: $MONGODB_COLLECTION_NAME"
             echo "MONGODB_TOKEN_COLLECTION_NAME: $MONGODB_TOKEN_COLLECTION_NAME"
+            echo "MONGODB_OPLOG_SIZE_MB: $MONGODB_OPLOG_SIZE_MB"
 
             {{- if .Values.mongodb.tls.enabled }}
             cat /certs/tls.crt /certs/tls.key > /tmp/tls.pem
@@ -273,6 +274,32 @@ spec:
             do
               echo "Waiting for mongodb to be ready...";
               sleep 5;
+            done
+
+            echo "=============================="
+            echo "Resizing oplog on each replica..."
+            echo "=============================="
+
+            # replSetResizeOplog is per-member; replica-set URI would only hit primary.
+            for host in {{ include "mongodb-store.oplogMemberHosts" . }}; do
+              echo "Oplog resize: $host -> ${MONGODB_OPLOG_SIZE_MB} MB"
+              until mongosh "mongodb://${host}:27017/?directConnection=true" \
+                {{- if .Values.mongodb.auth.enabled }}
+                --authenticationMechanism SCRAM-SHA-256 \
+                --username {{ $rootUsername }} --password "$MONGODB_ROOT_PASSWORD" --authenticationDatabase admin \
+                {{- end }}
+                {{- if .Values.mongodb.tls.enabled }}
+                --tls \
+                --tlsCAFile /certs/ca.crt \
+                --tlsCertificateKeyFile /tmp/tls.pem \
+                {{- end }}
+                                --eval "
+{{ include "mongodb-store.oplogEval" . | indent 18 }}
+                  "
+              do
+                echo "Waiting for mongodb member $host...";
+                sleep 5;
+              done
             done
 
             echo "=============================="
