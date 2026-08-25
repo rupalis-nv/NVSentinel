@@ -35,8 +35,8 @@ Strings must be base-10 digits; range 0–2147483647 is checked before int for s
 
 {{/*
 Parse a Kubernetes quantity to integer MiB (bytes / 1048576).
-Binary suffixes (Ki/Mi/Gi/Ti) use 1024; decimal SI (K/M/G/T) use 1000.
-Coefficient must be an integer.
+Binary suffixes (Ki/Mi/Gi/Ti) use 1024; decimal SI (k/M/G/T) use 1000.
+Coefficient must be an integer. Decimal kilo is lowercase k (not K).
 */}}
 {{- define "mongodb-store.storageToMB" -}}
 {{- $s := . | toString | trim -}}
@@ -56,10 +56,10 @@ Coefficient must be an integer.
 {{- $coef = trimSuffix "G" $s -}}{{- $bytesPer = 1000000000 -}}
 {{- else if hasSuffix "M" $s -}}
 {{- $coef = trimSuffix "M" $s -}}{{- $bytesPer = 1000000 -}}
-{{- else if hasSuffix "K" $s -}}
-{{- $coef = trimSuffix "K" $s -}}{{- $bytesPer = 1000 -}}
+{{- else if hasSuffix "k" $s -}}
+{{- $coef = trimSuffix "k" $s -}}{{- $bytesPer = 1000 -}}
 {{- else -}}
-{{- fail (printf "mongodb-store persistence size %q must have a unit (Gi, G, Mi, M, Ti, T)" $s) -}}
+{{- fail (printf "mongodb-store persistence size %q must have a unit (Gi, G, Mi, M, Ki, k, Ti, T)" $s) -}}
 {{- end -}}
 {{- if not (regexMatch "^[0-9]+$" $coef) -}}
 {{- fail (printf "mongodb-store persistence size %q must use an integer coefficient" $s) -}}

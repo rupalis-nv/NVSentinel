@@ -125,7 +125,7 @@ global:
 
 ### Volume size (Bitnami)
 
-`mongodb.persistence.size` (default `8Gi`). Percona: `psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage`. Existing PVCs do not grow on upgrade.
+`mongodb.persistence.size` (default `8Gi`). Percona: `psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage`. Sizes are Kubernetes quantities: binary `Ki`/`Mi`/`Gi`/`Ti` or decimal SI `k`/`M`/`G`/`T` (kilo is lowercase `k`, not `K`). Existing PVCs do not grow on upgrade.
 
 ```yaml
 mongodb-store:
