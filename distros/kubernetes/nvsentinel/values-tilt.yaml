@@ -175,7 +175,7 @@ mongodb-store:
           pvc:
             resources:
               requests:
-                # 2Gi is the chart minimum: 990 MiB MongoDB oplog plus 50% of the volume for data.
+                # Helm requires PVC/2 >= 990 MiB (1980Mi floor). 2Gi is a Gi-sized request that passes.
                 storage: "2Gi"
         nodeSelector:
           node-role.kubernetes.io/control-plane: ""
