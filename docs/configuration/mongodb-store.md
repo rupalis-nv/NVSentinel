@@ -136,7 +136,7 @@ mongodb-store:
 
 ### Oplog size
 
-`oplogPercentOfVolume` (default `10`, range 1–50) sizes the replica-set oplog as a percent of the data PVC (`mongodb.persistence.size` or the Percona rs0 PVC). MongoDB's minimum is 990 MiB, so the default 8Gi volume yields 990 MiB, not 819 MiB. A 32Gi volume at 10% yields 3276 MiB (~3.2Gi).
+`oplogPercentOfVolume` (default `10`, range 1–50) sizes the replica-set oplog as a percent of the data PVC (`mongodb.persistence.size` or the Percona rs0 PVC). MongoDB's minimum is 990 MiB, so the default 8Gi volume yields 990 MiB, not 819 MiB. A 32Gi volume at 10% yields 3276 MiB (~3.2Gi). Helm fails if the PVC is under 2Gi: 990 MiB of oplog would leave less than 50% of the disk for data.
 
 Do not hardcode a 15 GiB oplog: it does not fit the default 8Gi PVC. The original 24-hour target (~15120 MiB at ~500 events/s) needs about 148Gi at 10%, or a higher percent on a smaller disk. The in-cluster init Job runs `replSetResizeOplog` on every member. External Mongo is not resized.
 
