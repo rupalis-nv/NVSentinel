@@ -154,7 +154,7 @@ mongodb-store:
       size: "32Gi"
 ```
 
-A completed Job is immutable. Changing this percent or the PVC size changes the Job hash so Helm/Argo create a new Job.
+A completed Job is immutable. Changing this percent or the PVC size creates a new Job when the computed oplog size (or replica-member list) changes.
 
 ### HealthEvents TTL
 

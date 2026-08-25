@@ -281,12 +281,17 @@ spec:
             echo "=============================="
 
             # replSetResizeOplog is per-member; replica-set URI would only hit primary.
+            # Percona databaseAdmin cannot run this; clusterAdmin can. Bitnami uses root.
             for host in {{ include "mongodb-store.oplogMemberHosts" . }}; do
               echo "Oplog resize: $host -> ${MONGODB_OPLOG_SIZE_MB} MB"
               until mongosh "mongodb://${host}:27017/?directConnection=true" \
                 {{- if .Values.mongodb.auth.enabled }}
                 --authenticationMechanism SCRAM-SHA-256 \
+                {{- if .Values.usePerconaOperator }}
+                --username "$MONGODB_CLUSTER_ADMIN_USER" --password "$MONGODB_CLUSTER_ADMIN_PASSWORD" --authenticationDatabase admin \
+                {{- else }}
                 --username {{ $rootUsername }} --password "$MONGODB_ROOT_PASSWORD" --authenticationDatabase admin \
+                {{- end }}
                 {{- end }}
                 {{- if .Values.mongodb.tls.enabled }}
                 --tls \
@@ -312,6 +317,16 @@ spec:
               secretKeyRef:
                 name: internal-mongodb-users
                 key: MONGODB_CLUSTER_MONITOR_USER
+          - name: MONGODB_CLUSTER_ADMIN_USER
+            valueFrom:
+              secretKeyRef:
+                name: internal-mongodb-users
+                key: MONGODB_CLUSTER_ADMIN_USER
+          - name: MONGODB_CLUSTER_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: internal-mongodb-users
+                key: MONGODB_CLUSTER_ADMIN_PASSWORD
           - name: MONGODB_ROOT_USER
             valueFrom:
               secretKeyRef:

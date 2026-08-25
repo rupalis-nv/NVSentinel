@@ -34,49 +34,40 @@ Strings must be base-10 digits; range 0–2147483647 is checked before int for s
 {{- end }}
 
 {{/*
-Parse a Kubernetes quantity (8Gi, 32G, 8192Mi, …) to integer mebibytes.
-Gi/Mi/Ti/Ki use 1024; G/M/T/K use 1000. Coefficient must be an integer.
+Parse a Kubernetes quantity to integer MiB (bytes / 1048576).
+Binary suffixes (Ki/Mi/Gi/Ti) use 1024; decimal SI (K/M/G/T) use 1000.
+Coefficient must be an integer.
 */}}
 {{- define "mongodb-store.storageToMB" -}}
 {{- $s := . | toString | trim -}}
 {{- $coef := "" -}}
-{{- $factor := 0 -}}
+{{- $bytesPer := 0 -}}
 {{- if hasSuffix "Ti" $s -}}
-{{- $coef = trimSuffix "Ti" $s -}}{{- $factor = 1048576 -}}
-{{- else if hasSuffix "T" $s -}}
-{{- $coef = trimSuffix "T" $s -}}{{- $factor = 1000000 -}}
+{{- $coef = trimSuffix "Ti" $s -}}{{- $bytesPer = 1099511627776 -}}
 {{- else if hasSuffix "Gi" $s -}}
-{{- $coef = trimSuffix "Gi" $s -}}{{- $factor = 1024 -}}
-{{- else if hasSuffix "G" $s -}}
-{{- $coef = trimSuffix "G" $s -}}{{- $factor = 1000 -}}
+{{- $coef = trimSuffix "Gi" $s -}}{{- $bytesPer = 1073741824 -}}
 {{- else if hasSuffix "Mi" $s -}}
-{{- $coef = trimSuffix "Mi" $s -}}{{- $factor = 1 -}}
-{{- else if hasSuffix "M" $s -}}
-{{- $coef = trimSuffix "M" $s -}}{{- $factor = 1 -}}
+{{- $coef = trimSuffix "Mi" $s -}}{{- $bytesPer = 1048576 -}}
 {{- else if hasSuffix "Ki" $s -}}
-{{- $coef = trimSuffix "Ki" $s -}}{{- $factor = 0 -}}
+{{- $coef = trimSuffix "Ki" $s -}}{{- $bytesPer = 1024 -}}
+{{- else if hasSuffix "T" $s -}}
+{{- $coef = trimSuffix "T" $s -}}{{- $bytesPer = 1000000000000 -}}
+{{- else if hasSuffix "G" $s -}}
+{{- $coef = trimSuffix "G" $s -}}{{- $bytesPer = 1000000000 -}}
+{{- else if hasSuffix "M" $s -}}
+{{- $coef = trimSuffix "M" $s -}}{{- $bytesPer = 1000000 -}}
 {{- else if hasSuffix "K" $s -}}
-{{- $coef = trimSuffix "K" $s -}}{{- $factor = 0 -}}
+{{- $coef = trimSuffix "K" $s -}}{{- $bytesPer = 1000 -}}
 {{- else -}}
 {{- fail (printf "mongodb-store persistence size %q must have a unit (Gi, G, Mi, M, Ti, T)" $s) -}}
 {{- end -}}
 {{- if not (regexMatch "^[0-9]+$" $coef) -}}
 {{- fail (printf "mongodb-store persistence size %q must use an integer coefficient" $s) -}}
 {{- end -}}
-{{- if eq $factor 0 -}}
-{{- /* Ki/K: integer MB, at least 1 if non-zero */ -}}
-{{- $bytes := 0 -}}
-{{- if hasSuffix "Ki" $s -}}
-{{- $bytes = mul (int $coef) 1024 -}}
-{{- else -}}
-{{- $bytes = mul (int $coef) 1000 -}}
-{{- end -}}
+{{- $bytes := mul (int $coef) $bytesPer -}}
 {{- $mb := div $bytes 1048576 -}}
 {{- if and (eq $mb 0) (gt $bytes 0) -}}{{- $mb = 1 -}}{{- end -}}
 {{- $mb -}}
-{{- else -}}
-{{- mul (int $coef) $factor -}}
-{{- end -}}
 {{- end }}
 
 {{/*
@@ -89,12 +80,11 @@ Nil/empty percent → 10. Range 1–50.
 {{- if or (kindIs "invalid" $raw) (eq ($raw | toString) "") -}}
 {{- $raw = 10 -}}
 {{- end -}}
-{{- if kindIs "string" $raw -}}
-{{- if not (regexMatch "^[0-9]+$" $raw) -}}
+{{- $s := $raw | toString -}}
+{{- if not (regexMatch "^[0-9]+$" $s) -}}
 {{- fail (printf "mongodb-store.oplogPercentOfVolume must be an integer from 1 through 50, got %v" $raw) -}}
 {{- end -}}
-{{- end -}}
-{{- $pct := int $raw -}}
+{{- $pct := int $s -}}
 {{- if or (lt $pct 1) (gt $pct 50) -}}
 {{- fail (printf "mongodb-store.oplogPercentOfVolume must be an integer from 1 through 50, got %v" $raw) -}}
 {{- end -}}
@@ -104,7 +94,10 @@ Nil/empty percent → 10. Range 1–50.
 {{- $mb = 990 -}}
 {{- end -}}
 {{- $half := div $volMB 2 -}}
-{{- if and (gt $half 990) (gt $mb $half) -}}
+{{- if lt $half 990 -}}
+{{- fail (printf "data volume %d MB cannot reserve 990 MB for oplog and retain 50%% for data; increase mongodb persistence size" $volMB) -}}
+{{- end -}}
+{{- if gt $mb $half -}}
 {{- $mb = $half -}}
 {{- end -}}
 {{- if ge $mb $volMB -}}
@@ -139,7 +132,7 @@ change is a new Job, not a patch on a completed one.
 */}}
 {{- define "mongodb-store.initJobName" -}}
 {{- $ttl := include "mongodb-store.collectionExpirySeconds" . | toString -}}
-{{- $hash := printf "%s\n%s\n%s" (include "mongodb-store.oplogSizeMB" .) (include "mongodb-store.initEval" .) (include "mongodb-store.oplogEval" .) | sha256sum | trunc 8 -}}
+{{- $hash := printf "%s\n%s\n%s\n%s" (include "mongodb-store.oplogSizeMB" .) (include "mongodb-store.oplogMemberHosts" .) (include "mongodb-store.initEval" .) (include "mongodb-store.oplogEval" .) | sha256sum | trunc 8 -}}
 {{- printf "create-mongodb-database-%s-%s" $ttl $hash | trunc 63 -}}
 {{- end }}
 
