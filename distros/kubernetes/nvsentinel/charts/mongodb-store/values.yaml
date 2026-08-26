@@ -41,11 +41,14 @@ collectionExpirySeconds: 2592000
 # Percona: psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage
 # Existing Bound PVCs do not grow on helm upgrade (StatefulSet VCT is immutable).
 
-# Oplog as a percent of that PVC (1–50). Default 10.
-# 8Gi → 990Mi (MongoDB minimum); 32Gi → 3276Mi (~3.2Gi).
-# ~15Gi oplog (24h at ~500 events/s) needs ~148Gi PVC at 10%, or a higher percent.
+# Oplog size in MiB (MongoDB minimum 990). The operator computes this from
+# event rate, TTL, and the desired change-stream window; the chart does not
+# derive it from the PVC. See docs/configuration/mongodb-store.md#oplog-size.
 # Init Job runs replSetResizeOplog on each replica. Not applied to external Mongo.
-oplogPercentOfVolume: 10
+# The job never shrinks an existing oplog unless oplogAllowShrink is true
+# (truncating the window drops change-stream resume tokens; see issue 1594).
+oplogSizeMB: 990
+oplogAllowShrink: false
 
 # SCRAM application user (created when mongodb.tls.enabled is false).
 # Instead of X.509 cert-based users, the Job creates a SCRAM-SHA-256 user

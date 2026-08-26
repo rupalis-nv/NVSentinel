@@ -175,7 +175,7 @@ mongodb-store:
           pvc:
             resources:
               requests:
-                # Helm requires PVC/2 >= 990 MiB (1980Mi floor). 2Gi is a Gi-sized request that passes.
+                # 2Gi is enough for Tilt Percona plus MongoDB's 990 MiB oplog floor.
                 storage: "2Gi"
         nodeSelector:
           node-role.kubernetes.io/control-plane: ""

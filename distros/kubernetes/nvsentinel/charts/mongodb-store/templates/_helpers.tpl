@@ -3,9 +3,41 @@ Manual-PV size: mongodb.persistence.size, or Percona rs0 volumeSpec when usePerc
 */}}
 {{- define "mongodb-store.persistenceSize" -}}
 {{- if .Values.usePerconaOperator -}}
-{{- index .Values "psmdb-db" "replsets" "rs0" "volumeSpec" "pvc" "resources" "requests" "storage" | default "8Gi" -}}
+{{- $psmdb := index .Values "psmdb-db" | default dict -}}
+{{- $rs0 := index (index $psmdb "replsets" | default dict) "rs0" | default dict -}}
+{{- $pvc := index (index $rs0 "volumeSpec" | default dict) "pvc" | default dict -}}
+{{- $req := index (index $pvc "resources" | default dict) "requests" | default dict -}}
+{{- index $req "storage" | default "8Gi" -}}
 {{- else -}}
 {{- .Values.mongodb.persistence.size | default "8Gi" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+true when it is safe to run replSetResizeOplog (a real PVC, not emptyDir/hostPath).
+false for Bitnami persistence.enabled=false (emptyDir) and Percona hostPath/emptyDir.
+*/}}
+{{- define "mongodb-store.oplogResizeEnabled" -}}
+{{- if .Values.usePerconaOperator -}}
+{{- $psmdb := index .Values "psmdb-db" | default dict -}}
+{{- $rs0 := index (index $psmdb "replsets" | default dict) "rs0" | default dict -}}
+{{- $vs := index $rs0 "volumeSpec" | default dict -}}
+{{- if or (index $vs "hostPath") (index $vs "emptyDir") -}}
+false
+{{- else if not (index $vs "pvc") -}}
+false
+{{- else -}}
+true
+{{- end -}}
+{{- else -}}
+{{- $en := index .Values.mongodb.persistence "enabled" -}}
+{{- if kindIs "invalid" $en -}}
+true
+{{- else if eq ($en | toString) "false" -}}
+false
+{{- else -}}
+true
+{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -34,74 +66,25 @@ Strings must be base-10 digits; range 0–2147483647 is checked before int for s
 {{- end }}
 
 {{/*
-Parse a Kubernetes quantity to integer MiB (bytes / 1048576).
-Binary suffixes (Ki/Mi/Gi/Ti) use 1024; decimal SI (k/M/G/T) use 1000.
-Coefficient must be an integer. Decimal kilo is lowercase k (not K).
-*/}}
-{{- define "mongodb-store.storageToMB" -}}
-{{- $s := . | toString | trim -}}
-{{- $coef := "" -}}
-{{- $bytesPer := 0 -}}
-{{- if hasSuffix "Ti" $s -}}
-{{- $coef = trimSuffix "Ti" $s -}}{{- $bytesPer = 1099511627776 -}}
-{{- else if hasSuffix "Gi" $s -}}
-{{- $coef = trimSuffix "Gi" $s -}}{{- $bytesPer = 1073741824 -}}
-{{- else if hasSuffix "Mi" $s -}}
-{{- $coef = trimSuffix "Mi" $s -}}{{- $bytesPer = 1048576 -}}
-{{- else if hasSuffix "Ki" $s -}}
-{{- $coef = trimSuffix "Ki" $s -}}{{- $bytesPer = 1024 -}}
-{{- else if hasSuffix "T" $s -}}
-{{- $coef = trimSuffix "T" $s -}}{{- $bytesPer = 1000000000000 -}}
-{{- else if hasSuffix "G" $s -}}
-{{- $coef = trimSuffix "G" $s -}}{{- $bytesPer = 1000000000 -}}
-{{- else if hasSuffix "M" $s -}}
-{{- $coef = trimSuffix "M" $s -}}{{- $bytesPer = 1000000 -}}
-{{- else if hasSuffix "k" $s -}}
-{{- $coef = trimSuffix "k" $s -}}{{- $bytesPer = 1000 -}}
-{{- else -}}
-{{- fail (printf "mongodb-store persistence size %q must have a unit (Gi, G, Mi, M, Ki, k, Ti, T)" $s) -}}
-{{- end -}}
-{{- if not (regexMatch "^[0-9]+$" $coef) -}}
-{{- fail (printf "mongodb-store persistence size %q must use an integer coefficient" $s) -}}
-{{- end -}}
-{{- $bytes := mul (int $coef) $bytesPer -}}
-{{- $mb := div $bytes 1048576 -}}
-{{- if and (eq $mb 0) (gt $bytes 0) -}}{{- $mb = 1 -}}{{- end -}}
-{{- $mb -}}
-{{- end }}
-
-{{/*
-Oplog MB = persistenceSize × oplogPercentOfVolume, floored to MongoDB's 990 MiB
-minimum and capped at 50% of the volume so data files still fit.
-Nil/empty percent → 10. Range 1–50.
+Oplog size in MiB. The operator sets this; the chart does not derive it from the PVC.
+Nil/empty → 990 (MongoDB minimum). Integer >= 990.
+oplogPercentOfVolume is rejected: Helm no longer multiplies percent × volume.
 */}}
 {{- define "mongodb-store.oplogSizeMB" -}}
-{{- $raw := .Values.oplogPercentOfVolume -}}
+{{- if and (not (kindIs "invalid" .Values.oplogPercentOfVolume)) (ne (.Values.oplogPercentOfVolume | toString) "") (ne (.Values.oplogPercentOfVolume | toString) "<nil>") -}}
+{{- fail "mongodb-store.oplogPercentOfVolume was removed; set oplogSizeMB (integer MiB, minimum 990). See docs/configuration/mongodb-store.md#oplog-size" -}}
+{{- end -}}
+{{- $raw := .Values.oplogSizeMB -}}
 {{- if or (kindIs "invalid" $raw) (eq ($raw | toString) "") -}}
-{{- $raw = 10 -}}
+{{- $raw = 990 -}}
 {{- end -}}
 {{- $s := $raw | toString -}}
 {{- if not (regexMatch "^[0-9]+$" $s) -}}
-{{- fail (printf "mongodb-store.oplogPercentOfVolume must be an integer from 1 through 50, got %v" $raw) -}}
+{{- fail (printf "mongodb-store.oplogSizeMB must be an integer >= 990, got %v" $raw) -}}
 {{- end -}}
-{{- $pct := int $s -}}
-{{- if or (lt $pct 1) (gt $pct 50) -}}
-{{- fail (printf "mongodb-store.oplogPercentOfVolume must be an integer from 1 through 50, got %v" $raw) -}}
-{{- end -}}
-{{- $volMB := include "mongodb-store.storageToMB" (include "mongodb-store.persistenceSize" .) | int -}}
-{{- $mb := div (mul $volMB $pct) 100 -}}
+{{- $mb := int $s -}}
 {{- if lt $mb 990 -}}
-{{- $mb = 990 -}}
-{{- end -}}
-{{- $half := div $volMB 2 -}}
-{{- if lt $half 990 -}}
-{{- fail (printf "data volume %d MB cannot reserve 990 MB for oplog and retain 50%% for data; increase mongodb persistence size" $volMB) -}}
-{{- end -}}
-{{- if gt $mb $half -}}
-{{- $mb = $half -}}
-{{- end -}}
-{{- if ge $mb $volMB -}}
-{{- fail (printf "computed oplog %d MB does not fit data volume %d MB; increase mongodb persistence size" $mb $volMB) -}}
+{{- fail (printf "mongodb-store.oplogSizeMB must be an integer >= 990, got %v" $raw) -}}
 {{- end -}}
 {{- $mb -}}
 {{- end }}
@@ -132,7 +115,7 @@ change is a new Job, not a patch on a completed one.
 */}}
 {{- define "mongodb-store.initJobName" -}}
 {{- $ttl := include "mongodb-store.collectionExpirySeconds" . | toString -}}
-{{- $hash := printf "%s\n%s\n%s\n%s" (include "mongodb-store.oplogSizeMB" .) (include "mongodb-store.oplogMemberHosts" .) (include "mongodb-store.initEval" .) (include "mongodb-store.oplogEval" .) | sha256sum | trunc 8 -}}
+{{- $hash := printf "%s\n%s\n%s\n%s\n%s" (include "mongodb-store.oplogSizeMB" .) (include "mongodb-store.oplogMemberHosts" .) (include "mongodb-store.initEval" .) (include "mongodb-store.oplogEval" .) (include "mongodb-store.oplogResizeEnabled" .) | sha256sum | trunc 8 -}}
 {{- printf "create-mongodb-database-%s-%s" $ttl $hash | trunc 63 -}}
 {{- end }}
 

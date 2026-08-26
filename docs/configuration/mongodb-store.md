@@ -125,7 +125,7 @@ global:
 
 ### Volume size (Bitnami)
 
-`mongodb.persistence.size` (default `8Gi`). Percona: `psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage`. Sizes are Kubernetes quantities: binary `Ki`/`Mi`/`Gi`/`Ti` or decimal SI `k`/`M`/`G`/`T` (kilo is lowercase `k`, not `K`). Existing PVCs do not grow on upgrade.
+`mongodb.persistence.size` (default `8Gi`). Percona: `psmdb-db.replsets.rs0.volumeSpec.pvc.resources.requests.storage`. Sizes are Kubernetes quantities (for example `8Gi`, `32G`). Existing PVCs do not grow on upgrade.
 
 ```yaml
 mongodb-store:
@@ -136,25 +136,38 @@ mongodb-store:
 
 ### Oplog size
 
-`oplogPercentOfVolume` (default `10`, range 1–50) sizes the replica-set oplog as a percent of the data PVC (`mongodb.persistence.size` or the Percona rs0 PVC). MongoDB's minimum is 990 MiB, so the default 8Gi volume yields 990 MiB, not 819 MiB. A 32Gi volume at 10% yields 3276 MiB (~3.2Gi). Helm converts the PVC to MiB and fails when half of that is below 990, so `1980Mi` is the floor (`1Gi` fails; `2Gi` is the usual small size).
+`oplogSizeMB` (default `990`, MongoDB's minimum) is the replica-set oplog size in mebibytes. Helm does **not** compute this from the PVC. Pick a value from the guidance below, keep it well under the **live** data volume (about half is a safe ceiling so WiredTiger still has room for data), then set the integer.
 
-Do not hardcode a 15 GiB oplog: it does not fit the default 8Gi PVC. The original 24-hour target (~15120 MiB at ~500 events/s) needs about 148Gi at 10%, or a higher percent on a smaller disk. The in-cluster init Job runs `replSetResizeOplog` on every member. External Mongo is not resized.
+Issue #1594 needs a change-stream window long enough to cover downtime plus drain time. Both PVC and oplog grow roughly linearly with event rate, so the ratio can stay stable once you have measured bytes/event — but that ratio is **not** a chart default. `990` is Mongo's floor, not a 24-hour window.
 
-| PVC | 10% oplog | Approx. window at 500 events/s × ~350 B |
-| --- | --------- | --------------------------------------- |
-| 8Gi | 990 MiB | ~1.6 h |
-| 32Gi | 3276 MiB | ~5.4 h |
-| 148Gi | ~15 GiB | ~24 h |
+```
+data PVC  ≈ event-rate × TTL × stored-event-size
+oplog     ≈ oplog-entry-size × window × event-rate × extra-writes
+window    ≈ downtime-tolerance + drain-time
+            drain-time is driven by max(0, ingest-rate − slowest-consumer-rate)
+```
+
+- Stored event size is not raw JSON: account for WiredTiger compression and, on Percona, encryption.
+- Extra oplog writes include resume-token updates and fault-handling (fatal HE / total HE).
+- Consumption rate drifts when modules change; re-measure after large processor changes.
+- A 24-hour window at ~500 events/s × ~350 B is on the order of **15120 MiB** and needs a data PVC large enough to hold that oplog plus data (do not put 15 GiB of oplog on the default 8Gi volume).
+
+The init Job runs `replSetResizeOplog` on every reachable member. It **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594). Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
+
+External Mongo is not resized. Resize is skipped when there is no PVC: Bitnami `mongodb.persistence.enabled=false` (emptyDir) or Percona `volumeSpec.hostPath` / `emptyDir`.
+
+Raising `persistence.size` does not expand an already-Bound PVC. Expand and verify the live volume first, then raise `oplogSizeMB`. `replSetResizeOplog` does not check free disk.
 
 ```yaml
 mongodb-store:
-  oplogPercentOfVolume: 10
+  oplogSizeMB: 3276   # example: ~3.2Gi; compute from the formula, do not copy blindly
+  oplogAllowShrink: false
   mongodb:
     persistence:
       size: "32Gi"
 ```
 
-A completed Job is immutable. Changing this percent or the PVC size creates a new Job when the computed oplog size (or replica-member list) changes.
+A completed Job is immutable. Changing `oplogSizeMB` (or the replica-member list) creates a new Job. One unreachable replica is skipped after 12 tries (~60s) so a TTL update is not blocked; two or more skipped members fail the Job.
 
 ### HealthEvents TTL
 

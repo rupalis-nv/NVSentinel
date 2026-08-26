@@ -282,30 +282,56 @@ spec:
 
             # replSetResizeOplog is per-member; replica-set URI would only hit primary.
             # Percona databaseAdmin cannot run this; clusterAdmin can. Bitnami uses root.
+            # Bound retries so a down member cannot eat the 600s deadline (TTL still
+            # applies). Skip at most one unreachable member; never shrink unless
+            # MONGODB_OPLOG_ALLOW_SHRINK=true (see oplogEval).
+{{- if eq (include "mongodb-store.oplogResizeEnabled" . | trim) "true" }}
+            skipped=0
+            member_count=0
             for host in {{ include "mongodb-store.oplogMemberHosts" . }}; do
+              member_count=$((member_count + 1))
               echo "Oplog resize: $host -> ${MONGODB_OPLOG_SIZE_MB} MB"
-              until mongosh "mongodb://${host}:27017/?directConnection=true" \
-                {{- if .Values.mongodb.auth.enabled }}
-                --authenticationMechanism SCRAM-SHA-256 \
-                {{- if .Values.usePerconaOperator }}
-                --username "$MONGODB_CLUSTER_ADMIN_USER" --password "$MONGODB_CLUSTER_ADMIN_PASSWORD" --authenticationDatabase admin \
-                {{- else }}
-                --username {{ $rootUsername }} --password "$MONGODB_ROOT_PASSWORD" --authenticationDatabase admin \
-                {{- end }}
-                {{- end }}
-                {{- if .Values.mongodb.tls.enabled }}
-                --tls \
-                --tlsCAFile /certs/ca.crt \
-                --tlsCertificateKeyFile /tmp/tls.pem \
-                {{- end }}
-                                --eval "
+              ok=0
+              tries=0
+              max_tries=12
+              while [ "$tries" -lt "$max_tries" ]; do
+                tries=$((tries + 1))
+                if mongosh "mongodb://${host}:27017/?directConnection=true" \
+                  {{- if .Values.mongodb.auth.enabled }}
+                  --authenticationMechanism SCRAM-SHA-256 \
+                  {{- if .Values.usePerconaOperator }}
+                  --username "$MONGODB_CLUSTER_ADMIN_USER" --password "$MONGODB_CLUSTER_ADMIN_PASSWORD" --authenticationDatabase admin \
+                  {{- else }}
+                  --username {{ $rootUsername }} --password "$MONGODB_ROOT_PASSWORD" --authenticationDatabase admin \
+                  {{- end }}
+                  {{- end }}
+                  {{- if .Values.mongodb.tls.enabled }}
+                  --tls \
+                  --tlsCAFile /certs/ca.crt \
+                  --tlsCertificateKeyFile /tmp/tls.pem \
+                  {{- end }}
+                                  --eval "
 {{ include "mongodb-store.oplogEval" . | indent 18 }}
-                  "
-              do
-                echo "Waiting for mongodb member $host...";
-                sleep 5;
+                    "
+                then
+                  ok=1
+                  break
+                fi
+                echo "Waiting for mongodb member $host (try ${tries}/${max_tries})..."
+                sleep 5
               done
+              if [ "$ok" -ne 1 ]; then
+                echo "WARN: skip oplog resize on unreachable $host after ${max_tries} tries"
+                skipped=$((skipped + 1))
+              fi
             done
+            if [ "$skipped" -ge "$member_count" ] || [ "$skipped" -gt 1 ]; then
+              echo "ERROR: oplog resize skipped on ${skipped}/${member_count} members"
+              exit 1
+            fi
+{{- else }}
+            echo "Skip oplog resize: data volume is not a PVC (emptyDir/hostPath or persistence.enabled=false)."
+{{- end }}
 
             echo "=============================="
             echo "mongodb user creation completed."

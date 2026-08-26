@@ -1522,9 +1522,12 @@ mongodb-store:
   # In-cluster and external Mongo. Job name includes this value so helm/argo rerun collMod.
   collectionExpirySeconds: 2592000
 
-  # Oplog as a percent of the data PVC (1–50). Default 10.
-  # 8Gi → 990Mi minimum; 32Gi → 3276Mi. In-cluster init Job only.
-  oplogPercentOfVolume: 10
+  # Oplog size in MiB (MongoDB minimum 990). Set this from the sizing
+  # guidance in docs/configuration/mongodb-store.md; the chart does not
+  # derive it from the PVC. In-cluster init Job only.
+  # Never shrinks a live oplog unless oplogAllowShrink is true.
+  oplogSizeMB: 990
+  oplogAllowShrink: false
 
   # MongoDB replica configuration
   mongodb:
