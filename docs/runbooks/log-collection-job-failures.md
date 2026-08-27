@@ -80,7 +80,18 @@ kubectl describe node $NODE_NAME | grep -A 5 "Taints:"
 kubectl describe node $NODE_NAME | grep nvidia.com/gpu
 ```
 
-### Issue 2: Timeout Errors
+### Issue 2: nvidia-bug-report.sh not found in driver container
+
+**Error in logs**:
+```text
+error: OCI runtime exec failed: exec: "nvidia-bug-report.sh": executable file not found in $PATH
+```
+
+**Cause**: GPU Operator's `nvidia-driver-ctr` keeps NVIDIA binaries under `/run/nvidia/driver/usr/bin`, which is not on the default `kubectl exec` PATH.
+
+**Solution**: Upgrade to a log-collector image that prepends `/run/nvidia/driver/usr/bin` to PATH (or chroots into `DRIVER_ROOT`) before invoking `nvidia-bug-report.sh`. Workaround: disable log collection so remediation is not delayed by the collection timeout.
+
+### Issue 3: Timeout Errors
 
 **Error in logs**:
 ```text
@@ -97,7 +108,7 @@ logCollector:
   collectionTimeout: 1800  # Increase to 30 minutes
 ```
 
-### Issue 3: Upload Failures
+### Issue 4: Upload Failures
 
 **Error in logs**:
 ```text
@@ -122,7 +133,7 @@ kubectl run -n nvsentinel test-connectivity --rm -it --image=curlimages/curl --r
   curl -v http://nvsentinel-incluster-file-server.nvsentinel.svc.cluster.local/healthz
 ```
 
-### Issue 4: Permission Errors
+### Issue 5: Permission Errors
 
 **Error in logs**:
 ```text
@@ -146,7 +157,7 @@ kubectl get psp
 kubectl get ns nvsentinel -o yaml | grep -A 5 pod-security
 ```
 
-### Issue 5: Disk Space Issues on File Server
+### Issue 6: Disk Space Issues on File Server
 
 **Error in logs**:
 ```text
