@@ -136,36 +136,91 @@ mongodb-store:
 
 ### Oplog size
 
-`oplogSizeMB` (default `990`, MongoDB's minimum) is the replica-set oplog size in mebibytes. Helm does **not** compute this from the PVC. Pick a value from the guidance below, keep it well under the **live** data volume (about half is a safe ceiling so WiredTiger still has room for data), then set the integer.
+`oplogSizeMB` (default `990`, MongoDB's minimum) is the replica-set oplog size in megabytes. Helm does **not** compute this from the PVC. `990` is Mongo's floor, not a 24-hour window.
 
-Issue #1594 needs a change-stream window long enough to cover downtime plus drain time. Both PVC and oplog grow roughly linearly with event rate, so the ratio can stay stable once you have measured bytes/event — but that ratio is **not** a chart default. `990` is Mongo's floor, not a 24-hour window.
+Fault Quarantine, Node Drainer, Fault Remediation, and Event Exporter resume from change-stream tokens. If the token ages off the oplog during an outage, they resume from now and **silently skip** events (issue #1594). Size the oplog so tokens survive the longest outage you will tolerate, then keep that size under about **half** the **live** data volume so WiredTiger still has room for collections.
+
+#### What to set (summary)
+
+| Knob | Starting point | Notes |
+| ---- | -------------- | ----- |
+| Desired window | **24 hours** | Covers rolling updates, evictions, and module restarts. Use **48 hours** if you want extra margin. |
+| `oplogSizeMB` | Measure wrap time if Mongo is already running; otherwise use the estimate below | Integer megabytes, minimum `990` |
+| PVC | At least **2 × oplog** (Gi), then add TTL data | Bound volumes do not grow from Helm. Do not put a 15 GB oplog on the default `8Gi` disk. |
+
+You do not need a separate drain-time term for most clusters. If consumers stay caught up, drain time is ~0. The 24-hour window already covers a full day of consumer downtime. Add extra hours only if you know a consumer lags ingest for a long time (for example a large Event Exporter backfill).
+
+#### Measure on a live cluster (preferred)
+
+On any replica, in `mongosh`:
+
+```javascript
+const s = db.getSiblingDB("local").oplog.rs.stats()
+const first = db.getSiblingDB("local").oplog.rs.find().sort({$natural: 1}).limit(1).next().ts
+const last = db.getSiblingDB("local").oplog.rs.find().sort({$natural: -1}).limit(1).next().ts
+const spanSec = last.getHighBits() - first.getHighBits()
+const currentMB = Math.floor(s.maxSize / (1024 * 1024))
+const bytesPerSec = s.size / spanSec
+const hoursCapacity = s.maxSize / bytesPerSec / 3600
+print("currentMB=" + currentMB + " usedMB=" + Math.floor(s.size / (1024 * 1024)))
+print("spanHours=" + (spanSec / 3600).toFixed(1) + " hoursCapacity≈" + hoursCapacity.toFixed(1))
+print("for 24h set oplogSizeMB ≈ " + Math.ceil(currentMB * (24 / hoursCapacity)))
+```
+
+`hoursCapacity` uses used bytes vs wall-clock span so a disk that is not yet full is not treated as "already holding 24h". If `hoursCapacity` is already ≥ 24, you can leave `oplogSizeMB` as-is (the Job will not shrink unless `oplogAllowShrink` is true). Still keep the value under about half the live PVC. Re-run after large processor changes; resume-token and fault-handling write volume can shift.
+
+At low event rates, resume-token heartbeats can dominate the oplog. Trust wrap time, not `events × 350 B`.
+
+#### Estimate before you have production load
 
 ```
-data PVC  ≈ event-rate × TTL × stored-event-size
-oplog     ≈ oplog-entry-size × window × event-rate × extra-writes
-window    ≈ downtime-tolerance + drain-time
-            drain-time is driven by max(0, ingest-rate − slowest-consumer-rate)
+oplogSizeMB ≈ event_rate_per_sec × oplog_entry_bytes × window_seconds × extra_writes / 1_000_000
 ```
 
-- Stored event size is not raw JSON: account for WiredTiger compression and, on Percona, encryption.
-- Extra oplog writes include resume-token updates and fault-handling (fatal HE / total HE).
-- Consumption rate drifts when modules change; re-measure after large processor changes.
-- A 24-hour window at ~500 events/s × ~350 B is on the order of **15120 MiB** and needs a data PVC large enough to hold that oplog plus data (do not put 15 GiB of oplog on the default 8Gi volume).
+| Term | Meaning | How to get it | If you cannot measure yet |
+| ---- | ------- | ------------- | ------------------------- |
+| `event_rate_per_sec` | HealthEvents inserts per second | `count` in a known window on `HealthEvents`, or scale from a similar cluster | Issue #1594 uses **~500/s at ~100k nodes** (~5/s per 1k nodes). Linear-scale from your node count; this is a noisy-cluster ceiling, not an idle cluster. |
+| `oplog_entry_bytes` | Bytes of one health-event insert in the oplog | Issue #1594 measured **~350 B** uncompressed. Live: oplog `size` ÷ inserts in that window | **350** |
+| `window_seconds` | How long a resume token must remain in the oplog | 24h = `86400`; 48h = `172800` | **86400** |
+| `extra_writes` | Other oplog traffic per health event (resume-token updates, fault-handling writes) | Live: (oplog bytes in a window) ÷ (health-event count × 350). At high ingest this is usually a small multiplier | **1.5** (1.0 if you only count the insert; 1.5 leaves headroom for tokens and extra processor writes) |
 
-The init Job runs `replSetResizeOplog` on every reachable member. It **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594). Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
+Stored collection size is **not** the same as oplog-entry size: WiredTiger compression (and Percona encryption) shrinks data on disk. Do not use uncompressed JSON size for the PVC data term.
 
-External Mongo is not resized. Resize is skipped when there is no PVC: Bitnami `mongodb.persistence.enabled=false` (emptyDir) or Percona `volumeSpec.hostPath` / `emptyDir`.
+#### PVC vs oplog
+
+The data PVC must hold TTL-aged HealthEvents **and** the oplog. WiredTiger needs headroom: keep `oplogSizeMB` under about half the **live** volume.
+
+- **Oplog floor for the disk:** `persistence.size` (Gi) ≳ `2 × oplogSizeMB / 1024`. Example: `15120` MB oplog → at least **32Gi**.
+- **TTL data** is often larger than the oplog. After a few days, scale from observed `collStats().storageSize` × (`TTL` / collection age). Uncompressed `rate × 350 B × TTL` overestimates badly.
 
 Raising `persistence.size` does not expand an already-Bound PVC. Expand and verify the live volume first, then raise `oplogSizeMB`. `replSetResizeOplog` does not check free disk.
 
+#### Worked example
+
+On a **~100k-node** cluster writing **~500 health events/s**, with **~350 B** per oplog insert, `extra_writes = 1`, and a **24-hour** window:
+
+`500 × 350 × 86400 / 1_000_000` ≈ **15120** MB.
+
 ```yaml
 mongodb-store:
-  oplogSizeMB: 3276   # example: ~3.2Gi; compute from the formula, do not copy blindly
+  oplogSizeMB: 15120   # 24h at 500/s × 350 B; scale if your rate differs
   oplogAllowShrink: false
   mongodb:
     persistence:
-      size: "32Gi"
+      size: "32Gi"     # 2× oplog half-volume floor; raise further for 30d TTL data
 ```
+
+| Cluster size (same per-node rate as above) | Rough event rate | 24h `oplogSizeMB` | PVC at least |
+| ------------------------------------------ | ---------------- | ----------------- | ------------ |
+| ~100k nodes | 500/s | 15120 | 32Gi (+ TTL data) |
+| ~10k nodes | 50/s | 1512 | 8Gi can hold the oplog; grow for TTL data |
+| Kind / Tilt / empty cluster | near 0 | leave **990** | chart default |
+
+Do not copy `15120` onto a small or idle cluster. Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
+
+The init Job runs `replSetResizeOplog` on every reachable member. It **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594).
+
+External Mongo is not resized. Resize is skipped when there is no PVC: Bitnami `mongodb.persistence.enabled=false` (emptyDir) or Percona `volumeSpec.hostPath` / `emptyDir`.
 
 A completed Job is immutable. Changing `oplogSizeMB` (or the replica-member list) creates a new Job. One unreachable replica is skipped after 12 tries (~60s) so a TTL update is not blocked; two or more skipped members fail the Job.
 
