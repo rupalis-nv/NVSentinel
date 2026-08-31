@@ -140,6 +140,8 @@ else
   # the binary lives under ${DRIVER_ROOT}/usr/bin, not on $PATH. Prefer PATH lookup,
   # then chroot into DRIVER_ROOT (same pattern as gpu-reset). If chroot wrote the
   # report under the driver root, copy it to the container path kubectl cp expects.
+  # $1/$2/$PATH must expand in the remote shell, not this script.
+  # shellcheck disable=SC2016
   kubectl -n "${GPU_OPERATOR_NAMESPACE}" exec -c "${DRIVER_CONTAINER_NAME}" "${DRIVER_POD_NAME}" -- \
     sh -c 'DRIVER_ROOT="$1"; OUT="$2"; export PATH="${DRIVER_ROOT}/usr/bin:${PATH}"
       if command -v nvidia-bug-report.sh >/dev/null 2>&1; then
