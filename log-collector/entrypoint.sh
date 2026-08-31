@@ -146,7 +146,10 @@ else
         nvidia-bug-report.sh --output-file "$OUT"
       elif [ -x "${DRIVER_ROOT}/usr/bin/nvidia-bug-report.sh" ]; then
         mkdir -p "${DRIVER_ROOT}/$(dirname "$OUT")"
-        chroot "${DRIVER_ROOT}" nvidia-bug-report.sh --output-file "$OUT"
+        if ! chroot "${DRIVER_ROOT}" nvidia-bug-report.sh --output-file "$OUT"; then
+          echo "[ERROR] chroot nvidia-bug-report.sh failed (DRIVER_ROOT=${DRIVER_ROOT})" >&2
+          exit 1
+        fi
         if [ -f "${DRIVER_ROOT}${OUT}.gz" ] && [ ! -f "${OUT}.gz" ]; then
           mkdir -p "$(dirname "$OUT")"
           cp "${DRIVER_ROOT}${OUT}.gz" "${OUT}.gz"
