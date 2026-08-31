@@ -162,6 +162,8 @@ mongodb-store:
         name: rs0
         size: 3
         configuration: |
+          replication:
+            oplogSizeMB: 990
           setParameter:
             authenticationMechanisms: "MONGODB-X509,SCRAM-SHA-256,SCRAM-SHA-1"
         replsetOverrides:
