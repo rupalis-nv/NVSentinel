@@ -146,7 +146,7 @@ Fault Quarantine, Node Drainer, Fault Remediation, and Event Exporter resume fro
 | ---- | -------------- | ----- |
 | Desired window | **24 hours** | Covers rolling updates, evictions, and module restarts. Use **48 hours** if you want extra margin. |
 | `oplogSizeMB` | Measure wrap time if Mongo is already running; otherwise use the estimate below | Integer megabytes, minimum `990` |
-| PVC | At least **2 × oplog** (Gi), then add TTL data | Bound volumes do not grow from Helm. Do not put a 15 GB oplog on the default `8Gi` disk. |
+| PVC | At least **2 × oplog** (Gi), then add TTL data | Bound volumes do not grow from Helm. Do not put a 15 GB oplog on the chart's small **dev** disk. |
 
 You do not need a separate drain-time term for most clusters. If consumers stay caught up, drain time is ~0. The 24-hour window already covers a full day of consumer downtime. Add extra hours only if you know a consumer lags ingest for a long time (for example a large Event Exporter backfill).
 
@@ -195,7 +195,7 @@ The data PVC must hold TTL-aged HealthEvents **and** the oplog. WiredTiger needs
 
 Raising `persistence.size` does not expand an already-Bound PVC. Expand and verify the live volume first, then raise `oplogSizeMB`. `replSetResizeOplog` does not check free disk.
 
-#### Worked example
+#### Worked example (production)
 
 On a **~100k-node** cluster writing **~500 health events/s**, with **~350 B** per oplog insert, `extra_writes = 1`, and a **24-hour** window:
 
@@ -210,13 +210,13 @@ mongodb-store:
       size: "32Gi"     # 2× oplog half-volume floor; raise further for 30d TTL data
 ```
 
-| Cluster size (same per-node rate as above) | Rough event rate | 24h `oplogSizeMB` | PVC at least |
-| ------------------------------------------ | ---------------- | ----------------- | ------------ |
-| ~100k nodes | 500/s | 15120 | 32Gi (+ TTL data) |
-| ~10k nodes | 50/s | 1512 | 8Gi can hold the oplog; grow for TTL data |
-| Kind / Tilt / empty cluster | near 0 | leave **990** | chart default |
+That disk is much larger than the chart's **dev** default. A quieter cluster should scale the **500/s** figure with node count, then size the disk at least **2 × oplog** plus TTL data — not by copying the chart's small default volume.
 
-Do not copy `15120` onto a small or idle cluster. Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
+Do not copy `15120` onto a small or idle cluster.
+
+#### Kind, Tilt, and empty clusters
+
+Leave `oplogSizeMB` at **990** (Mongo's minimum). The chart default volume is for development only. Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
 
 The init Job runs `replSetResizeOplog` on every reachable member. It **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594).
 
