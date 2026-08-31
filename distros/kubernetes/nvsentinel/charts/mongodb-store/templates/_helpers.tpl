@@ -90,6 +90,27 @@ oplogPercentOfVolume is rejected: Helm no longer multiplies percent × volume.
 {{- end }}
 
 {{/*
+Bitnami mongod.conf ConfigMap. Mounted via mongodb.existingConfigmap.
+*/}}
+{{- define "mongodb-store.mongodConfigMapName" -}}
+mongodb-mongod-config
+{{- end }}
+
+{{/*
+Percona mongod.conf uses psmdb-db.oplogSizeMB (subchart cannot read the parent key).
+When Percona is on, that integer must match mongodb-store.oplogSizeMB.
+*/}}
+{{- define "mongodb-store.validatePerconaOplog" -}}
+{{- if .Values.usePerconaOperator -}}
+{{- $want := include "mongodb-store.oplogSizeMB" . | int -}}
+{{- $have := index .Values "psmdb-db" "oplogSizeMB" | default 990 | int -}}
+{{- if ne $want $have -}}
+{{- fail (printf "mongodb-store.oplogSizeMB is %d but psmdb-db.oplogSizeMB is %d; Percona writes the latter into mongod.conf. Set them to the same integer." $want $have) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Direct-connection hostnames for replSetResizeOplog (must run on every member).
 */}}
 {{- define "mongodb-store.oplogMemberHosts" -}}

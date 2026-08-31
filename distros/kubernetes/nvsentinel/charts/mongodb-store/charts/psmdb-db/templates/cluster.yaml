@@ -116,10 +116,12 @@ spec:
     externalNodes:
 {{ $replset.externalNodes | toYaml | indent 6 }}
     {{- end }}
-    {{- if $replset.configuration }}
     configuration: |
+      replication:
+        oplogSizeMB: {{ $.Values.oplogSizeMB | default 990 }}
+{{- if $replset.configuration }}
 {{ $replset.configuration | indent 6 }}
-    {{- end }}
+{{- end }}
     {{- if $replset.topologySpreadConstraints }}
     topologySpreadConstraints:
 {{ $replset.topologySpreadConstraints | toYaml | indent 6 }}

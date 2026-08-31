@@ -44,10 +44,14 @@ collectionExpirySeconds: 2592000
 # Oplog size in MiB (MongoDB minimum 990). The operator computes this from
 # event rate, TTL, and the desired change-stream window; the chart does not
 # derive it from the PVC. See docs/configuration/mongodb-store.md#oplog-size.
-# Init Job runs replSetResizeOplog on each replica. Not applied to external Mongo.
-# The job never shrinks an existing oplog unless oplogAllowShrink is true
-# (truncating the window drops change-stream resume tokens; see issue 1594).
-oplogSizeMB: 990
+# Written to mongod.conf (replication.oplogSizeMB) so a new empty member
+# starts at this size. Init Job still runs replSetResizeOplog on live members.
+# Not applied to external Mongo. The job never shrinks an existing oplog unless
+# oplogAllowShrink is true (truncating the window drops change-stream resume
+# tokens; see issue 1594).
+# Percona: also set psmdb-db.oplogSizeMB to this same integer (subchart cannot
+# read the parent key; Helm fails if they differ).
+oplogSizeMB: &oplogSizeMB 990
 oplogAllowShrink: false
 
 # SCRAM application user (created when mongodb.tls.enabled is false).
@@ -252,6 +256,9 @@ mongodb:
     - "--setParameter"
     - "authenticationMechanisms=MONGODB-X509,SCRAM-SHA-256"
 
+  # mongod.conf from templates/mongodb-mongod-config.yaml (replication.oplogSizeMB).
+  existingConfigmap: mongodb-mongod-config
+
   tolerations: []
   
   nodeSelector: {}
@@ -297,6 +304,8 @@ psmdb-operator:
 psmdb-db:
   nameOverride: mongodb
   fullnameOverride: mongodb
+  # Must match mongodb-store.oplogSizeMB (written into mongod.conf).
+  oplogSizeMB: *oplogSizeMB
   replsets:
     rs0:
       name: rs0

@@ -218,7 +218,11 @@ Do not copy `15120` onto a small or idle cluster.
 
 Leave `oplogSizeMB` at **990** (Mongo's minimum). The chart default volume is for development only. Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
 
-The init Job runs `replSetResizeOplog` on every reachable member. It **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594).
+The same integer is written to `mongod.conf` as `replication.oplogSizeMB` (Bitnami ConfigMap `mongodb-mongod-config`; Percona `replsets.rs0.configuration`). A **new** empty member (replaced PVC, added replica) then starts at that size instead of Mongo's default. Changing the config file does **not** resize a member that already has data — the init Job still runs `replSetResizeOplog` on every reachable member.
+
+The Job **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594).
+
+For Percona, set `mongodb-store.psmdb-db.oplogSizeMB` to the same integer as `mongodb-store.oplogSizeMB`. Helm fails if they differ.
 
 External Mongo is not resized. Resize is skipped when there is no PVC: Bitnami `mongodb.persistence.enabled=false` (emptyDir) or Percona `volumeSpec.hostPath` / `emptyDir`.
 
