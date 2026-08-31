@@ -1526,6 +1526,8 @@ mongodb-store:
   # guidance in docs/configuration/mongodb-store.md; the chart does not
   # derive it from the PVC. In-cluster init Job only.
   # Never shrinks a live oplog unless oplogAllowShrink is true.
+  # Must match mongodb.extraFlags --oplogSize= (Bitnami) and, when Percona
+  # is on, psmdb-db.replsets.rs0.configuration replication.oplogSizeMB.
   oplogSizeMB: 990
   oplogAllowShrink: false
 

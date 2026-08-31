@@ -206,8 +206,21 @@ mongodb-store:
   oplogSizeMB: 15120   # 24h at 500/s × 350 B; scale if your rate differs
   oplogAllowShrink: false
   mongodb:
+    extraFlags:
+      - "--setParameter"
+      - "authenticationMechanisms=MONGODB-X509,SCRAM-SHA-256"
+      - "--oplogSize=15120"   # must match oplogSizeMB
     persistence:
       size: "32Gi"     # 2× oplog half-volume floor; raise further for 30d TTL data
+  # Percona only — must match oplogSizeMB; this replaces the whole configuration block:
+  # psmdb-db:
+  #   replsets:
+  #     rs0:
+  #       configuration: |
+  #         replication:
+  #           oplogSizeMB: 15120
+  #         setParameter:
+  #           authenticationMechanisms: "MONGODB-X509,SCRAM-SHA-256,SCRAM-SHA-1"
 ```
 
 That disk is much larger than the chart's **dev** default. A quieter cluster should scale the **500/s** figure with node count, then size the disk at least **2 × oplog** plus TTL data — not by copying the chart's small default volume.
@@ -218,11 +231,14 @@ Do not copy `15120` onto a small or idle cluster.
 
 Leave `oplogSizeMB` at **990** (Mongo's minimum). The chart default volume is for development only. Kind/Tilt hostPath often starts with MongoDB's default of 5% of the node disk (several GiB); skip-shrink leaves that larger window in place.
 
-The same integer is written to `mongod.conf` as `replication.oplogSizeMB` (Bitnami ConfigMap `mongodb-mongod-config`; Percona `replsets.rs0.configuration`). A **new** empty member (replaced PVC, added replica) then starts at that size instead of Mongo's default. Changing the config file does **not** resize a member that already has data — the init Job still runs `replSetResizeOplog` on every reachable member.
+The same integer must also be on mongod startup so a **new** empty member (replaced PVC, added replica) starts at that size instead of Mongo's default. Put it in **our** values, not in vendored chart templates:
+
+- **Bitnami:** `mongodb.extraFlags` must include `--oplogSize=<oplogSizeMB>`. Helm fails if the flag is missing or differs. Do **not** set `mongodb.existingConfigmap` to a snippet `mongodb.conf`: Bitnami then treats the file as fully user-managed, skips `dbPath` / logpath / replSet, and the pod crashloops (`--fork` without `--logpath`).
+- **Percona:** `psmdb-db.replsets.rs0.configuration` must contain `replication.oplogSizeMB` equal to `oplogSizeMB`. Helm fails if it is missing or differs. Overriding `configuration` replaces the whole block, so keep `setParameter` as well.
+
+`--set oplogSizeMB=1400` alone is not enough; also set `--oplogSize=1400` (Bitnami) or `replication.oplogSizeMB: 1400` (Percona). Changing flags or the config file does **not** resize a member that already has data — the init Job still runs `replSetResizeOplog` on every reachable member.
 
 The Job **never shrinks** an existing oplog unless you set `mongodb-store.oplogAllowShrink: true`. Shrinking truncates the oldest entries immediately; change-stream watchers then hit `ChangeStreamHistoryLost` and resume from now (silent event loss — issue #1594).
-
-For Percona, set `mongodb-store.psmdb-db.oplogSizeMB` to the same integer as `mongodb-store.oplogSizeMB`. Helm fails if they differ.
 
 External Mongo is not resized. Resize is skipped when there is no PVC: Bitnami `mongodb.persistence.enabled=false` (emptyDir) or Percona `volumeSpec.hostPath` / `emptyDir`.
 

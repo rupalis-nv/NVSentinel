@@ -90,22 +90,35 @@ oplogPercentOfVolume is rejected: Helm no longer multiplies percent × volume.
 {{- end }}
 
 {{/*
-Bitnami mongod.conf ConfigMap. Mounted via mongodb.existingConfigmap.
+New empty members read oplog size from our values, not vendored chart templates.
+Bitnami: mongodb.extraFlags must include --oplogSize=<oplogSizeMB> (a mounted
+snippet mongodb.conf makes the image skip dbPath/logpath and crashloop).
+Percona: psmdb-db.replsets.rs0.configuration must contain oplogSizeMB: <oplogSizeMB>.
 */}}
-{{- define "mongodb-store.mongodConfigMapName" -}}
-mongodb-mongod-config
-{{- end }}
-
-{{/*
-Percona mongod.conf uses psmdb-db.oplogSizeMB (subchart cannot read the parent key).
-When Percona is on, that integer must match mongodb-store.oplogSizeMB.
-*/}}
-{{- define "mongodb-store.validatePerconaOplog" -}}
+{{- define "mongodb-store.validateOplogStartup" -}}
+{{- $want := include "mongodb-store.oplogSizeMB" . | toString -}}
 {{- if .Values.usePerconaOperator -}}
-{{- $want := include "mongodb-store.oplogSizeMB" . | int -}}
-{{- $have := index .Values "psmdb-db" "oplogSizeMB" | default 990 | int -}}
-{{- if ne $want $have -}}
-{{- fail (printf "mongodb-store.oplogSizeMB is %d but psmdb-db.oplogSizeMB is %d; Percona writes the latter into mongod.conf. Set them to the same integer." $want $have) -}}
+{{- $cfg := "" -}}
+{{- $psmdb := index .Values "psmdb-db" | default dict -}}
+{{- $rs0 := index (index $psmdb "replsets" | default dict) "rs0" | default dict -}}
+{{- $cfg = index $rs0 "configuration" | default "" | toString -}}
+{{- if not (regexMatch (printf "(?m)^[ \\t]*oplogSizeMB:[ \\t]*%s[ \\t]*$" $want) $cfg) -}}
+{{- fail (printf "mongodb-store.oplogSizeMB is %s but psmdb-db.replsets.rs0.configuration has no matching oplogSizeMB. Put replication.oplogSizeMB: %s in that block. See docs/configuration/mongodb-store.md#oplog-size" $want $want) -}}
+{{- end -}}
+{{- else -}}
+{{- $joined := "" -}}
+{{- range (.Values.mongodb.extraFlags | default list) -}}
+{{- $joined = printf "%s %s" $joined (. | toString) -}}
+{{- end -}}
+{{- $wantFlag := printf "--oplogSize=%s" $want -}}
+{{- $all := regexFindAll "--oplogSize=[0-9]+" $joined -1 -}}
+{{- if eq (len $all) 0 -}}
+{{- fail (printf "mongodb-store.oplogSizeMB is %s but mongodb.extraFlags has no %s. Add that flag (do not mount a snippet mongodb.conf). See docs/configuration/mongodb-store.md#oplog-size" $want $wantFlag) -}}
+{{- end -}}
+{{- range $all -}}
+{{- if ne . $wantFlag -}}
+{{- fail (printf "mongodb-store.oplogSizeMB is %s but mongodb.extraFlags has %s. Set %s (do not mount a snippet mongodb.conf). See docs/configuration/mongodb-store.md#oplog-size" $want . $wantFlag) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
