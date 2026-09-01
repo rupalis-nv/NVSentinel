@@ -116,9 +116,10 @@ if (scramUser) {
 
 {{/*
 replSetResizeOplog must run with directConnection against each member.
-An existing replica set stores capped size in WiredTiger metadata, so mongod.conf
-alone does not resize a member that already has data. mongod.conf still sets the
-size for a new empty data directory (replaced PVC, new replica).
+An existing replica set stores capped size in WiredTiger metadata, so extraFlags
+and rs0.configuration do not resize a member that already has data. Those
+startup settings still set the size for a new empty data directory (replaced
+PVC, new replica).
 */}}
 {{- define "mongodb-store.oplogEval" -}}
 var raw = '$MONGODB_OPLOG_SIZE_MB';

@@ -268,9 +268,9 @@ spec:
               --tlsCAFile /certs/ca.crt \
               --tlsCertificateKeyFile /tmp/tls.pem \
               {{- end }}
-                              --eval "
+              --eval "
 {{ include "mongodb-store.initEval" . | indent 18 }}
-                "
+              "
             do
               echo "Waiting for mongodb to be ready...";
               sleep 5;
@@ -310,9 +310,9 @@ spec:
                   --tlsCAFile /certs/ca.crt \
                   --tlsCertificateKeyFile /tmp/tls.pem \
                   {{- end }}
-                                  --eval "
+                  --eval "
 {{ include "mongodb-store.oplogEval" . | indent 18 }}
-                    "
+                  "
                 then
                   ok=1
                   break

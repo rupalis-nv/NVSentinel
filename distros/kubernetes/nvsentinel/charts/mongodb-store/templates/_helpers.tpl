@@ -68,12 +68,8 @@ Strings must be base-10 digits; range 0–2147483647 is checked before int for s
 {{/*
 Oplog size in MiB. The operator sets this; the chart does not derive it from the PVC.
 Nil/empty → 990 (MongoDB minimum). Integer >= 990.
-oplogPercentOfVolume is rejected: Helm no longer multiplies percent × volume.
 */}}
 {{- define "mongodb-store.oplogSizeMB" -}}
-{{- if and (not (kindIs "invalid" .Values.oplogPercentOfVolume)) (ne (.Values.oplogPercentOfVolume | toString) "") (ne (.Values.oplogPercentOfVolume | toString) "<nil>") -}}
-{{- fail "mongodb-store.oplogPercentOfVolume was removed; set oplogSizeMB (integer MiB, minimum 990). See docs/configuration/mongodb-store.md#oplog-size" -}}
-{{- end -}}
 {{- $raw := .Values.oplogSizeMB -}}
 {{- if or (kindIs "invalid" $raw) (eq ($raw | toString) "") -}}
 {{- $raw = 990 -}}
