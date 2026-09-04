@@ -27,11 +27,11 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-# Runtime class name for the pod. If empty or not set, the field will be omitted.
-# Default "nvidia" uses NVIDIA container toolkit GPU/driver injection.
-# On NRI-mode GPU Operator clusters no matching RuntimeClass is created; set
-# this to "" and mount host driver libraries via additionalHostVolumes /
-# additionalVolumeMounts (and extraEnv if LD_LIBRARY_PATH is needed).
+# Runtime class name for the pod. The default "nvidia" is rendered on the
+# DaemonSet. Set runtimeClassName: "" to omit the field (CRI-O, and NRI-mode
+# clusters with no matching RuntimeClass). In NRI mode, also mount host driver
+# libraries via additionalHostVolumes / additionalVolumeMounts (and extraEnv
+# if LD_LIBRARY_PATH is needed).
 runtimeClassName: "nvidia"
 
 # Extra environment variables for the metadata-collector container (optional).
@@ -53,7 +53,7 @@ additionalVolumeMounts: []
 # additionalHostVolumes:
 #   - name: nvidia-driver-libs
 #     hostPath:
-#       path: /usr/lib/aarch64-linux-gnu
+#       path: /usr/lib/x86_64-linux-gnu   # amd64; use /usr/lib/aarch64-linux-gnu on arm64
 #       type: Directory
 additionalHostVolumes: []
 

@@ -71,8 +71,7 @@ metadata-collector:
   additionalHostVolumes:
     - name: nvidia-driver-libs
       hostPath:
-        # amd64 hosts typically use /usr/lib/x86_64-linux-gnu
-        path: /usr/lib/aarch64-linux-gnu
+        path: /usr/lib/x86_64-linux-gnu   # amd64; use /usr/lib/aarch64-linux-gnu on arm64
         type: Directory
 ```
 
