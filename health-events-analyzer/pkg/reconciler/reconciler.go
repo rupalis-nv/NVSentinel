@@ -393,7 +393,7 @@ func (r *Reconciler) publishMatchedEvent(ctx context.Context,
 	defer span.End()
 
 	ruleMatchedTotal.WithLabelValues(rule.Name, event.HealthEvent.NodeName).Inc()
-	recordMatchedEntityMetricForRule(rule, event.HealthEvent)
+	r.recordMatchedEntityMetric(rule.Name, event.HealthEvent.NodeName, event.HealthEvent)
 
 	actionVal := r.getRecommendedActionValue(rule.RecommendedAction, rule.Name)
 
@@ -577,7 +577,7 @@ func (r *Reconciler) getPipelineStages(
 func (r *Reconciler) shouldProcessXidEvent(event *protos.HealthEvent) bool {
 	// Only process GPU XID errors (unhealthy GPU events with error codes)
 	return event != nil &&
-		event.ComponentClass == entityTypeGPU &&
+		event.ComponentClass == "GPU" &&
 		!event.IsHealthy &&
 		len(event.ErrorCode) > 0 &&
 		event.Agent != agentName // Don't process our own events
@@ -588,7 +588,7 @@ func (r *Reconciler) shouldProcessXidEvent(event *protos.HealthEvent) bool {
 // based on stale XID history from before the recovery
 func (r *Reconciler) shouldClearXidHistory(event *protos.HealthEvent) bool {
 	return event != nil &&
-		event.ComponentClass == entityTypeGPU &&
+		event.ComponentClass == "GPU" &&
 		event.IsHealthy &&
 		event.Agent != agentName // Don't process our own events
 }
@@ -658,7 +658,7 @@ func (r *Reconciler) processXidBurstDetection(ctx context.Context, event *protos
 
 	// Track metrics
 	ruleMatchedTotal.WithLabelValues("RepeatedXidError", event.NodeName).Inc()
-	recordMatchedEntityMetric("RepeatedXidError", event.NodeName, event)
+	r.recordMatchedEntityMetric("RepeatedXidError", event.NodeName, event)
 
 	if len(event.EntitiesImpacted) > 0 {
 		fatalEventsPublishedTotal.WithLabelValues(event.EntitiesImpacted[0].EntityValue).Inc()

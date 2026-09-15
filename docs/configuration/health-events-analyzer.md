@@ -105,13 +105,13 @@ health-events-analyzer:
   ruleMatchedEntityMetricEnabled: false
 ```
 
-When enabled, a match on an entity-keyed rule increments:
+When enabled, a match increments:
 
 ```text
 rule_matched_entity_total{rule_name, node_name, entity_type, entity_value}
 ```
 
-`entity_type` / `entity_value` come from the triggering event's impacted entities. GPU UUID is never exported; PCI or GPU index is used instead. Node-scoped rules (for example `MultipleRemediations`) do not emit this series.
+`entity_type` / `entity_value` come from the triggering event's impacted entities. GPU UUID is never exported; PCI or GPU index is used instead. Other types such as NVSwitch and NIC keep the producer spelling.
 
 ### Client Certificate Mount Path
 

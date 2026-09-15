@@ -16,63 +16,11 @@ package reconciler
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
 	protos "github.com/nvidia/nvsentinel/data-models/pkg/protos"
-	config "github.com/nvidia/nvsentinel/health-events-analyzer/pkg/config"
 )
-
-const (
-	entityTypeGPUUUID         = "GPU_UUID"
-	entityTypeGPU             = "GPU"
-	entityTypePCI             = "PCI"
-	entityTypeGPC             = "GPC"
-	entityTypeTPC             = "TPC"
-	entityTypeNVLINK          = "NVLINK"
-	entityTypeNIC             = "NIC"
-	entityTypeNICPort         = "NICPort"
-	entitiesImpactedFieldName = "entitiesimpacted"
-	maxMetricIndexDigits      = 4
-	maxPCIDomain              = 0xffff
-	maxPCIFunction            = 7
-)
-
-// metricSafeEntityTypes maps a case-insensitive entity type to the documented
-// Prometheus label spelling. GPU UUID is excluded: it is unbounded from
-// Prometheus's point of view, and a replaced GPU changes it.
-var metricSafeEntityTypes = map[string]string{
-	"gpu":     entityTypeGPU,
-	"pci":     entityTypePCI,
-	"gpc":     entityTypeGPC,
-	"tpc":     entityTypeTPC,
-	"nvlink":  entityTypeNVLINK,
-	"nic":     entityTypeNIC,
-	"nicport": entityTypeNICPort,
-}
-
-var nicMetricValuePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-
-// ruleSelectsOnEntity reports whether the rule's aggregation keys on an
-// impacted entity. Node-scoped rules do not mention entitiesimpacted, so they
-// do not emit rule_matched_entity_total even when the triggering event happens
-// to carry GPU or NIC entities.
-func ruleSelectsOnEntity(rule config.HealthEventsAnalyzerRule) bool {
-	for _, stage := range rule.Stage {
-		if strings.Contains(strings.ToLower(stage), entitiesImpactedFieldName) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func canonicalMetricEntityType(entityType string) (string, bool) {
-	canonical, ok := metricSafeEntityTypes[strings.ToLower(entityType)]
-
-	return canonical, ok
-}
 
 func parseBoundedHex(value string, minLen, maxLen int) (uint64, bool) {
 	if len(value) < minLen || len(value) > maxLen {
@@ -90,7 +38,7 @@ func parseBoundedHex(value string, minLen, maxLen int) (uint64, bool) {
 // canonicalBoundedIndex accepts the decimal GPU / GPC / TPC / NVLINK / NICPort
 // identifiers the XID handlers copy from syslog metadata.
 func canonicalBoundedIndex(value string) (string, bool) {
-	if len(value) == 0 || len(value) > maxMetricIndexDigits {
+	if len(value) == 0 || len(value) > 4 {
 		return "", false
 	}
 
@@ -116,7 +64,7 @@ func canonicalPCIValue(value string) (string, bool) {
 	}
 
 	domain, ok := parseBoundedHex(parts[0], 1, 8)
-	if !ok || domain > maxPCIDomain {
+	if !ok || domain > 0xffff {
 		return "", false
 	}
 
@@ -128,7 +76,7 @@ func canonicalPCIValue(value string) (string, bool) {
 	devicePart, function, hasFunction := strings.Cut(parts[2], ".")
 	parsedFunction, validFunction := parseBoundedHex(function, 1, 2)
 
-	if hasFunction && (!validFunction || parsedFunction > maxPCIFunction) {
+	if hasFunction && (!validFunction || parsedFunction > 7) {
 		return "", false
 	}
 
@@ -140,33 +88,25 @@ func canonicalPCIValue(value string) (string, bool) {
 	return fmt.Sprintf("%04x:%02x:%02x", domain, bus, device), true
 }
 
-func canonicalNICValue(value string) (string, bool) {
-	if !nicMetricValuePattern.MatchString(value) {
-		return "", false
-	}
-
-	return value, true
-}
-
-func canonicalMetricEntityValue(canonicalType, entityValue string) (string, bool) {
-	switch canonicalType {
-	case entityTypeGPU, entityTypeGPC, entityTypeTPC, entityTypeNVLINK, entityTypeNICPort:
+func canonicalMetricEntityValue(entityType, entityValue string) (string, bool) {
+	switch strings.ToLower(entityType) {
+	case "gpu", "gpc", "tpc", "nvlink", "nicport":
 		return canonicalBoundedIndex(entityValue)
-	case entityTypePCI:
+	case "pci":
 		return canonicalPCIValue(entityValue)
-	case entityTypeNIC:
-		return canonicalNICValue(entityValue)
 	default:
-		return "", false
+		if len(entityValue) == 0 || len(entityValue) > 64 {
+			return "", false
+		}
+
+		return entityValue, true
 	}
 }
 
-// metricSafeEntities returns the triggering event's impacted entities that are
-// safe Prometheus labels: stable slot identity, not GPU UUID, SM, or register
-// values. Types are rewritten to the documented canonical spelling so mixed
-// case cannot split a series. Values are rewritten to a bounded form for that
-// type; malformed values are dropped. Duplicates are dropped. The returned
-// entities are copies and do not mutate the triggering event.
+// metricSafeEntities returns copies of the triggering event's impacted
+// entities that are safe Prometheus labels. GPU UUID is omitted; other types
+// (including NVSwitch and NIC) keep the producer spelling. Values are rewritten
+// to a bounded form; malformed values and duplicates are dropped.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	seen := make(map[string]struct{}, len(event.GetEntitiesImpacted()))
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
@@ -175,25 +115,16 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 		entityType := entity.GetEntityType()
 		entityValue := entity.GetEntityValue()
 
-		if entityType == "" || entityValue == "" {
+		if entityType == "" || entityValue == "" || strings.EqualFold(entityType, "GPU_UUID") {
 			continue
 		}
 
-		if strings.EqualFold(entityType, entityTypeGPUUUID) {
-			continue
-		}
-
-		canonicalType, ok := canonicalMetricEntityType(entityType)
+		canonicalValue, ok := canonicalMetricEntityValue(entityType, entityValue)
 		if !ok {
 			continue
 		}
 
-		canonicalValue, ok := canonicalMetricEntityValue(canonicalType, entityValue)
-		if !ok {
-			continue
-		}
-
-		key := canonicalType + "\x00" + canonicalValue
+		key := strings.ToLower(entityType) + "\x00" + canonicalValue
 		if _, exists := seen[key]; exists {
 			continue
 		}
@@ -201,7 +132,7 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 		seen[key] = struct{}{}
 
 		out = append(out, &protos.Entity{
-			EntityType:  canonicalType,
+			EntityType:  entityType,
 			EntityValue: canonicalValue,
 		})
 	}
@@ -209,16 +140,14 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	return out
 }
 
-func recordMatchedEntityMetric(ruleName, nodeName string, event *protos.HealthEvent) {
-	for _, entity := range metricSafeEntities(event) {
-		recordRuleMatchedEntity(ruleName, nodeName, entity.GetEntityType(), entity.GetEntityValue())
-	}
-}
-
-func recordMatchedEntityMetricForRule(rule config.HealthEventsAnalyzerRule, event *protos.HealthEvent) {
-	if !ruleSelectsOnEntity(rule) {
+func (r *Reconciler) recordMatchedEntityMetric(ruleName, nodeName string, event *protos.HealthEvent) {
+	if r.config.HealthEventsAnalyzerRules == nil ||
+		!r.config.HealthEventsAnalyzerRules.RuleMatchedEntityMetricEnabled {
 		return
 	}
 
-	recordMatchedEntityMetric(rule.Name, event.GetNodeName(), event)
+	for _, entity := range metricSafeEntities(event) {
+		ruleMatchedEntityTotal.WithLabelValues(
+			ruleName, nodeName, entity.GetEntityType(), entity.GetEntityValue()).Inc()
+	}
 }

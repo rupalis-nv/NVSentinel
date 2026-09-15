@@ -62,11 +62,15 @@ var (
 		[]string{labelRuleName, labelNodeName},
 	)
 
-	// ruleMatchedEntityTotal counts matches by the entity the rule keyed on.
-	// Registered only when ruleMatchedEntityMetricEnabled is set, because
-	// entity labels raise cardinality (GPU × GPC × TPC per node).
-	// rule_matched_total already reports that a rule fired without it.
-	ruleMatchedEntityTotal *prometheus.CounterVec
+	// ruleMatchedEntityTotal counts matches by impacted entity. Series are
+	// recorded only when ruleMatchedEntityMetricEnabled is set.
+	ruleMatchedEntityTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rule_matched_entity_total",
+			Help: "Total number of times a rule matched, labeled by the entity it selected on.",
+		},
+		[]string{labelRuleName, labelNodeName, "entity_type", "entity_value"},
+	)
 
 	mongoQueryExecutionDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -86,30 +90,3 @@ var (
 		},
 	)
 )
-
-// EnableRuleMatchedEntityMetric registers rule_matched_entity_total. Call once at
-// startup, before the reconciler runs, when the operator has opted in. Repeat
-// calls are ignored so registering twice cannot panic.
-func EnableRuleMatchedEntityMetric() {
-	if ruleMatchedEntityTotal != nil {
-		return
-	}
-
-	ruleMatchedEntityTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "rule_matched_entity_total",
-			Help: "Total number of times a rule matched, labeled by the entity it selected on.",
-		},
-		[]string{labelRuleName, labelNodeName, "entity_type", "entity_value"},
-	)
-}
-
-// recordRuleMatchedEntity records a match against the entity the rule selected
-// on. It is a no-op unless EnableRuleMatchedEntityMetric has been called.
-func recordRuleMatchedEntity(ruleName, nodeName, entityType, entityValue string) {
-	if ruleMatchedEntityTotal == nil {
-		return
-	}
-
-	ruleMatchedEntityTotal.WithLabelValues(ruleName, nodeName, entityType, entityValue).Inc()
-}

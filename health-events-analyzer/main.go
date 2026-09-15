@@ -169,11 +169,6 @@ func run() error {
 		return fmt.Errorf("error loading TOML config: %w", err)
 	}
 
-	if tomlConfig.RuleMatchedEntityMetricEnabled {
-		reconciler.EnableRuleMatchedEntityMetric()
-		slog.Info("Registered rule_matched_entity_total with entity labels")
-	}
-
 	for _, rule := range tomlConfig.Rules {
 		ff.Set(rule.Name, rule.EvaluateRule)
 	}
