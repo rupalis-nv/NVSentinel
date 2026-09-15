@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	protos "github.com/nvidia/nvsentinel/data-models/pkg/protos"
+	config "github.com/nvidia/nvsentinel/health-events-analyzer/pkg/config"
 )
 
 func parseBoundedHex(value string, minLen, maxLen int) (uint64, bool) {
@@ -94,19 +95,32 @@ func canonicalMetricEntityValue(entityType, entityValue string) (string, bool) {
 		return canonicalBoundedIndex(entityValue)
 	case "pci":
 		return canonicalPCIValue(entityValue)
-	default:
+	case "nic", "nvswitch":
 		if len(entityValue) == 0 || len(entityValue) > 64 {
 			return "", false
 		}
 
 		return entityValue, true
+	default:
+		return "", false
 	}
 }
 
+func ruleSelectsOnEntity(rule config.HealthEventsAnalyzerRule) bool {
+	for _, stage := range rule.Stage {
+		if strings.Contains(strings.ToLower(stage), "entitiesimpacted") {
+			return true
+		}
+	}
+
+	return false
+}
+
 // metricSafeEntities returns copies of the triggering event's impacted
-// entities that are safe Prometheus labels. GPU UUID is omitted; other types
-// (including NVSwitch and NIC) keep the producer spelling. Values are rewritten
-// to a bounded form; malformed values and duplicates are dropped.
+// entities that are safe Prometheus labels. Only PCI, GPU, GPC, TPC, NVLINK,
+// NIC, NICPort, and NVSwitch are kept, using the producer spelling. GPU UUID
+// is omitted. Values are rewritten to a bounded form; malformed values and
+// duplicates are dropped.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	seen := make(map[string]struct{}, len(event.GetEntitiesImpacted()))
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
@@ -140,8 +154,9 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	return out
 }
 
-func (r *Reconciler) recordMatchedEntityMetric(ruleName, nodeName string, event *protos.HealthEvent) {
-	if r.config.HealthEventsAnalyzerRules == nil ||
+func (r *Reconciler) recordMatchedEntityMetric(ruleName, nodeName string, event *protos.HealthEvent, entityKeyed bool) {
+	if !entityKeyed ||
+		r.config.HealthEventsAnalyzerRules == nil ||
 		!r.config.HealthEventsAnalyzerRules.RuleMatchedEntityMetricEnabled {
 		return
 	}
