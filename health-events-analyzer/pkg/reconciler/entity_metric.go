@@ -122,6 +122,34 @@ func recordMatchedEntityMetric(ruleName, nodeName string, event *protos.HealthEv
 	}
 }
 
+// eventHasGPUUUID reports whether the burst detector keyed on a GPU UUID.
+// Events without one fall back to the unknown-GPU bucket and are not entity-keyed.
+func eventHasGPUUUID(event *protos.HealthEvent) bool {
+	if event == nil {
+		return false
+	}
+
+	for _, entity := range event.GetEntitiesImpacted() {
+		if entity == nil {
+			continue
+		}
+
+		if entity.GetEntityType() == entityTypeGPUUUID && entity.GetEntityValue() != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func recordMatchedEntityMetricForXidBurst(nodeName string, event *protos.HealthEvent) {
+	if !eventHasGPUUUID(event) {
+		return
+	}
+
+	recordMatchedEntityMetric("RepeatedXidError", nodeName, event)
+}
+
 func recordMatchedEntityMetricForRule(rule config.HealthEventsAnalyzerRule, event *protos.HealthEvent) {
 	if event == nil || !ruleSelectsOnEntity(rule) {
 		return
