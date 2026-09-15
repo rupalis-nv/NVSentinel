@@ -72,18 +72,10 @@ func canonicalMetricEntityType(entityType string) (string, bool) {
 // case cannot split a series. Duplicates are dropped. The returned entities
 // are copies and do not mutate the triggering event.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
-	if event == nil {
-		return nil
-	}
-
 	seen := make(map[string]struct{}, len(event.GetEntitiesImpacted()))
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
 
 	for _, entity := range event.GetEntitiesImpacted() {
-		if entity == nil {
-			continue
-		}
-
 		entityType := entity.GetEntityType()
 		entityValue := entity.GetEntityValue()
 
@@ -122,36 +114,8 @@ func recordMatchedEntityMetric(ruleName, nodeName string, event *protos.HealthEv
 	}
 }
 
-// eventHasGPUUUID reports whether the burst detector keyed on a GPU UUID.
-// Events without one fall back to the unknown-GPU bucket and are not entity-keyed.
-func eventHasGPUUUID(event *protos.HealthEvent) bool {
-	if event == nil {
-		return false
-	}
-
-	for _, entity := range event.GetEntitiesImpacted() {
-		if entity == nil {
-			continue
-		}
-
-		if entity.GetEntityType() == entityTypeGPUUUID && entity.GetEntityValue() != "" {
-			return true
-		}
-	}
-
-	return false
-}
-
-func recordMatchedEntityMetricForXidBurst(nodeName string, event *protos.HealthEvent) {
-	if !eventHasGPUUUID(event) {
-		return
-	}
-
-	recordMatchedEntityMetric("RepeatedXidError", nodeName, event)
-}
-
 func recordMatchedEntityMetricForRule(rule config.HealthEventsAnalyzerRule, event *protos.HealthEvent) {
-	if event == nil || !ruleSelectsOnEntity(rule) {
+	if !ruleSelectsOnEntity(rule) {
 		return
 	}
 

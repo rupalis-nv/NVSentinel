@@ -19,14 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const (
-	labelRuleName               = "rule_name"
-	labelNodeName               = "node_name"
-	labelEntityType             = "entity_type"
-	labelEntityValue            = "entity_value"
-	metricNameRuleMatchedEntity = "rule_matched_entity_total"
-)
-
 var (
 	totalEventsReceived = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -100,10 +92,10 @@ func EnableRuleMatchedEntityMetric() {
 
 	ruleMatchedEntityTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: metricNameRuleMatchedEntity,
+			Name: "rule_matched_entity_total",
 			Help: "Total number of times a rule matched, labeled by the entity it selected on.",
 		},
-		[]string{labelRuleName, labelNodeName, labelEntityType, labelEntityValue},
+		[]string{"rule_name", "node_name", "entity_type", "entity_value"},
 	)
 }
 

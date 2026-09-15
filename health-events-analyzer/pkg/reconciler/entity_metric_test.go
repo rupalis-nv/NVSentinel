@@ -331,39 +331,3 @@ func TestRecordMatchedEntityMetricForRule_EntityKeyedExportsSafeLabels(t *testin
 	require.NoError(t, err)
 	assert.Equal(t, 0.0, testutil.ToFloat64(uuidMetric))
 }
-
-func TestRecordMatchedEntityMetricForXidBurst_RequiresGPUUUID(t *testing.T) {
-	EnableRuleMatchedEntityMetric()
-	require.NotNil(t, ruleMatchedEntityTotal)
-
-	nodeName := "node-xid-burst"
-	pci := "0009:01:00"
-
-	pciBefore := testutil.ToFloat64(ruleMatchedEntityTotal.WithLabelValues("RepeatedXidError", nodeName, "PCI", pci))
-	gpuBefore := testutil.ToFloat64(ruleMatchedEntityTotal.WithLabelValues("RepeatedXidError", nodeName, "GPU", "3"))
-
-	recordMatchedEntityMetricForXidBurst(nodeName, &protos.HealthEvent{
-		NodeName: nodeName,
-		EntitiesImpacted: []*protos.Entity{
-			{EntityType: "PCI", EntityValue: pci},
-			{EntityType: "GPU", EntityValue: "3"},
-		},
-	})
-	assert.Equal(t, pciBefore, testutil.ToFloat64(ruleMatchedEntityTotal.WithLabelValues("RepeatedXidError", nodeName, "PCI", pci)))
-	assert.Equal(t, gpuBefore, testutil.ToFloat64(ruleMatchedEntityTotal.WithLabelValues("RepeatedXidError", nodeName, "GPU", "3")))
-
-	recordMatchedEntityMetricForXidBurst(nodeName, &protos.HealthEvent{
-		NodeName: nodeName,
-		EntitiesImpacted: []*protos.Entity{
-			{EntityType: "PCI", EntityValue: pci},
-			{EntityType: "GPU_UUID", EntityValue: "GPU-selected"},
-			{EntityType: "GPU", EntityValue: "3"},
-		},
-	})
-	assert.Equal(t, pciBefore+1, testutil.ToFloat64(ruleMatchedEntityTotal.WithLabelValues("RepeatedXidError", nodeName, "PCI", pci)))
-	assert.Equal(t, gpuBefore+1, testutil.ToFloat64(ruleMatchedEntityTotal.WithLabelValues("RepeatedXidError", nodeName, "GPU", "3")))
-
-	uuidMetric, err := ruleMatchedEntityTotal.GetMetricWithLabelValues("RepeatedXidError", nodeName, "GPU_UUID", "GPU-selected")
-	require.NoError(t, err)
-	assert.Equal(t, 0.0, testutil.ToFloat64(uuidMetric))
-}

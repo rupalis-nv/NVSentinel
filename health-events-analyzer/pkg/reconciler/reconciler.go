@@ -658,7 +658,7 @@ func (r *Reconciler) processXidBurstDetection(ctx context.Context, event *protos
 
 	// Track metrics
 	ruleMatchedTotal.WithLabelValues("RepeatedXidError", event.NodeName).Inc()
-	recordMatchedEntityMetricForXidBurst(event.NodeName, event)
+	recordMatchedEntityMetric("RepeatedXidError", event.NodeName, event)
 
 	if len(event.EntitiesImpacted) > 0 {
 		fatalEventsPublishedTotal.WithLabelValues(event.EntitiesImpacted[0].EntityValue).Inc()
