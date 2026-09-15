@@ -577,7 +577,7 @@ func (r *Reconciler) getPipelineStages(
 func (r *Reconciler) shouldProcessXidEvent(event *protos.HealthEvent) bool {
 	// Only process GPU XID errors (unhealthy GPU events with error codes)
 	return event != nil &&
-		event.ComponentClass == "GPU" &&
+		event.ComponentClass == entityTypeGPU &&
 		!event.IsHealthy &&
 		len(event.ErrorCode) > 0 &&
 		event.Agent != agentName // Don't process our own events
@@ -588,7 +588,7 @@ func (r *Reconciler) shouldProcessXidEvent(event *protos.HealthEvent) bool {
 // based on stale XID history from before the recovery
 func (r *Reconciler) shouldClearXidHistory(event *protos.HealthEvent) bool {
 	return event != nil &&
-		event.ComponentClass == "GPU" &&
+		event.ComponentClass == entityTypeGPU &&
 		event.IsHealthy &&
 		event.Agent != agentName // Don't process our own events
 }

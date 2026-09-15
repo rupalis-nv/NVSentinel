@@ -23,6 +23,13 @@ import (
 
 const (
 	entityTypeGPUUUID         = "GPU_UUID"
+	entityTypeGPU             = "GPU"
+	entityTypePCI             = "PCI"
+	entityTypeGPC             = "GPC"
+	entityTypeTPC             = "TPC"
+	entityTypeNVLINK          = "NVLINK"
+	entityTypeNIC             = "NIC"
+	entityTypeNICPort         = "NICPort"
 	entitiesImpactedFieldName = "entitiesimpacted"
 )
 
@@ -30,13 +37,13 @@ const (
 // Prometheus label spelling. GPU UUID is excluded: it is unbounded from
 // Prometheus's point of view, and a replaced GPU changes it.
 var metricSafeEntityTypes = map[string]string{
-	"gpu":     "GPU",
-	"pci":     "PCI",
-	"gpc":     "GPC",
-	"tpc":     "TPC",
-	"nvlink":  "NVLINK",
-	"nic":     "NIC",
-	"nicport": "NICPort",
+	"gpu":     entityTypeGPU,
+	"pci":     entityTypePCI,
+	"gpc":     entityTypeGPC,
+	"tpc":     entityTypeTPC,
+	"nvlink":  entityTypeNVLINK,
+	"nic":     entityTypeNIC,
+	"nicport": entityTypeNICPort,
 }
 
 // ruleSelectsOnEntity reports whether the rule's aggregation keys on an
