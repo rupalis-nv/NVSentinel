@@ -16,6 +16,7 @@ package reconciler
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -34,7 +35,6 @@ const (
 	entityTypeNICPort         = "NICPort"
 	entitiesImpactedFieldName = "entitiesimpacted"
 	maxMetricIndexDigits      = 4
-	maxNICMetricValueLen      = 64
 )
 
 // metricSafeEntityTypes maps a case-insensitive entity type to the documented
@@ -49,6 +49,8 @@ var metricSafeEntityTypes = map[string]string{
 	"nic":     entityTypeNIC,
 	"nicport": entityTypeNICPort,
 }
+
+var nicMetricValuePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // ruleSelectsOnEntity reports whether the rule's aggregation keys on an
 // impacted entity. Node-scoped rules do not mention entitiesimpacted, so they
@@ -122,10 +124,10 @@ func canonicalPCIValue(value string) (string, bool) {
 	}
 
 	devicePart, function, hasFunction := strings.Cut(parts[2], ".")
-	if hasFunction {
-		if _, validFunction := parseBoundedHex(function, 1, 2); !validFunction {
-			return "", false
-		}
+	_, validFunction := parseBoundedHex(function, 1, 2)
+
+	if hasFunction && !validFunction {
+		return "", false
 	}
 
 	device, ok := parseBoundedHex(devicePart, 1, 2)
@@ -137,20 +139,7 @@ func canonicalPCIValue(value string) (string, bool) {
 }
 
 func canonicalNICValue(value string) (string, bool) {
-	if len(value) == 0 || len(value) > maxNICMetricValueLen {
-		return "", false
-	}
-
-	for i, r := range value {
-		isAlnum := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
-		if isAlnum {
-			continue
-		}
-
-		if i > 0 && (r == '_' || r == '.' || r == '-') {
-			continue
-		}
-
+	if !nicMetricValuePattern.MatchString(value) {
 		return "", false
 	}
 
