@@ -172,8 +172,21 @@ func TestMetricSafeEntities(t *testing.T) {
 					{EntityType: "pci", EntityValue: "0009:01:00"},
 				},
 			},
-			wantType: []string{"pci"},
+			wantType: []string{"PCI"},
 			wantVal:  []string{"0009:01:00"},
+		},
+		{
+			name: "normalizes mixed-case types and deduplicates them",
+			event: &protos.HealthEvent{
+				EntitiesImpacted: []*protos.Entity{
+					{EntityType: "pci", EntityValue: "0009:01:00"},
+					{EntityType: "PCI", EntityValue: "0009:01:00"},
+					{EntityType: "NicPort", EntityValue: "1"},
+					{EntityType: "nvlink", EntityValue: "2"},
+				},
+			},
+			wantType: []string{"PCI", "NICPort", "NVLINK"},
+			wantVal:  []string{"0009:01:00", "1", "2"},
 		},
 	}
 

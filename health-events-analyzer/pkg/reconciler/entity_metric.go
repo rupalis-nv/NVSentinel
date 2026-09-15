@@ -26,16 +26,17 @@ const (
 	entitiesImpactedFieldName = "entitiesimpacted"
 )
 
-// metricSafeEntityTypes are bounded slot identities. GPU UUID is excluded: it is
-// unbounded from Prometheus's point of view, and a replaced GPU changes it.
-var metricSafeEntityTypes = map[string]struct{}{
-	"gpu":     {},
-	"pci":     {},
-	"gpc":     {},
-	"tpc":     {},
-	"nvlink":  {},
-	"nic":     {},
-	"nicport": {},
+// metricSafeEntityTypes maps a case-insensitive entity type to the documented
+// Prometheus label spelling. GPU UUID is excluded: it is unbounded from
+// Prometheus's point of view, and a replaced GPU changes it.
+var metricSafeEntityTypes = map[string]string{
+	"gpu":     "GPU",
+	"pci":     "PCI",
+	"gpc":     "GPC",
+	"tpc":     "TPC",
+	"nvlink":  "NVLINK",
+	"nic":     "NIC",
+	"nicport": "NICPort",
 }
 
 // ruleSelectsOnEntity reports whether the rule's aggregation keys on an
@@ -52,15 +53,17 @@ func ruleSelectsOnEntity(rule config.HealthEventsAnalyzerRule) bool {
 	return false
 }
 
-func isMetricSafeEntityType(entityType string) bool {
-	_, ok := metricSafeEntityTypes[strings.ToLower(entityType)]
+func canonicalMetricEntityType(entityType string) (string, bool) {
+	canonical, ok := metricSafeEntityTypes[strings.ToLower(entityType)]
 
-	return ok
+	return canonical, ok
 }
 
 // metricSafeEntities returns the triggering event's impacted entities that are
 // safe Prometheus labels: stable slot identity, not GPU UUID, SM, or register
-// values. Duplicates are dropped.
+// values. Types are rewritten to the documented canonical spelling so mixed
+// case cannot split a series. Duplicates are dropped. The returned entities
+// are copies and do not mutate the triggering event.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	if event == nil {
 		return nil
@@ -85,18 +88,22 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 			continue
 		}
 
-		if !isMetricSafeEntityType(entityType) {
+		canonicalType, ok := canonicalMetricEntityType(entityType)
+		if !ok {
 			continue
 		}
 
-		key := strings.ToLower(entityType) + "\x00" + entityValue
-		if _, ok := seen[key]; ok {
+		key := canonicalType + "\x00" + entityValue
+		if _, exists := seen[key]; exists {
 			continue
 		}
 
 		seen[key] = struct{}{}
 
-		out = append(out, entity)
+		out = append(out, &protos.Entity{
+			EntityType:  canonicalType,
+			EntityValue: entityValue,
+		})
 	}
 
 	return out
