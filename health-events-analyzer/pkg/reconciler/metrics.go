@@ -19,13 +19,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+const (
+	labelRuleName = "rule_name"
+	labelNodeName = "node_name"
+)
+
 var (
 	totalEventsReceived = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "health_event_analyzer_events_received_total",
 			Help: "Total number of events received from the watcher.",
 		},
-		[]string{"node_name"},
+		[]string{labelNodeName},
 	)
 	totalEventsSuccessfullyProcessed = promauto.NewCounter(
 		prometheus.CounterOpts{
@@ -54,7 +59,7 @@ var (
 			Name: "rule_matched_total",
 			Help: "Total number of times a rule matched for a node",
 		},
-		[]string{"rule_name", "node_name"},
+		[]string{labelRuleName, labelNodeName},
 	)
 
 	// ruleMatchedEntityTotal counts matches by the entity the rule keyed on.
@@ -69,7 +74,7 @@ var (
 			Help:    "Histogram of MongoDB pipeline execution durations.",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"rule_name"},
+		[]string{labelRuleName},
 	)
 
 	// performance metrics
@@ -95,7 +100,7 @@ func EnableRuleMatchedEntityMetric() {
 			Name: "rule_matched_entity_total",
 			Help: "Total number of times a rule matched, labeled by the entity it selected on.",
 		},
-		[]string{"rule_name", "node_name", "entity_type", "entity_value"},
+		[]string{labelRuleName, labelNodeName, "entity_type", "entity_value"},
 	)
 }
 
