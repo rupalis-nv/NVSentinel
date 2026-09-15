@@ -15,6 +15,7 @@
 package reconciler
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -187,6 +188,46 @@ func TestMetricSafeEntities(t *testing.T) {
 			},
 			wantType: []string{"PCI", "NICPort", "NVLINK"},
 			wantVal:  []string{"0009:01:00", "1", "2"},
+		},
+		{
+			name: "canonicalizes PCI padding and strips function",
+			event: &protos.HealthEvent{
+				EntitiesImpacted: []*protos.Entity{
+					{EntityType: "PCI", EntityValue: "00000000:1:0.0"},
+					{EntityType: "PCI", EntityValue: "0000:01:00"},
+				},
+			},
+			wantType: []string{"PCI"},
+			wantVal:  []string{"0000:01:00"},
+		},
+		{
+			name: "canonicalizes padded index values",
+			event: &protos.HealthEvent{
+				EntitiesImpacted: []*protos.Entity{
+					{EntityType: "GPC", EntityValue: "03"},
+					{EntityType: "GPC", EntityValue: "3"},
+				},
+			},
+			wantType: []string{"GPC"},
+			wantVal:  []string{"3"},
+		},
+		{
+			name: "drops malformed or unbounded values",
+			event: &protos.HealthEvent{
+				EntitiesImpacted: []*protos.Entity{
+					{EntityType: "PCI", EntityValue: "GPU-abc123"},
+					{EntityType: "GPU", EntityValue: "GPU-abc123"},
+					{EntityType: "GPC", EntityValue: "not-a-number"},
+					{EntityType: "TPC", EntityValue: "1e6"},
+					{EntityType: "NVLINK", EntityValue: "0x2"},
+					{EntityType: "NIC", EntityValue: "mlx5/0"},
+					{EntityType: "NIC", EntityValue: strings.Repeat("n", 65)},
+					{EntityType: "NICPort", EntityValue: "-1"},
+					{EntityType: "TPC", EntityValue: "2"},
+				},
+			},
+			wantType: []string{"TPC"},
+			wantVal:  []string{"2"},
 		},
 	}
 

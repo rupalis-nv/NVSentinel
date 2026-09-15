@@ -15,6 +15,8 @@
 package reconciler
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	protos "github.com/nvidia/nvsentinel/data-models/pkg/protos"
@@ -31,6 +33,8 @@ const (
 	entityTypeNIC             = "NIC"
 	entityTypeNICPort         = "NICPort"
 	entitiesImpactedFieldName = "entitiesimpacted"
+	maxMetricIndexDigits      = 4
+	maxNICMetricValueLen      = 64
 )
 
 // metricSafeEntityTypes maps a case-insensitive entity type to the documented
@@ -66,11 +70,112 @@ func canonicalMetricEntityType(entityType string) (string, bool) {
 	return canonical, ok
 }
 
+func parseBoundedHex(value string, minLen, maxLen int) (uint64, bool) {
+	if len(value) < minLen || len(value) > maxLen {
+		return 0, false
+	}
+
+	parsed, err := strconv.ParseUint(value, 16, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return parsed, true
+}
+
+// canonicalBoundedIndex accepts the decimal GPU / GPC / TPC / NVLINK / NICPort
+// identifiers the XID handlers copy from syslog metadata.
+func canonicalBoundedIndex(value string) (string, bool) {
+	if len(value) == 0 || len(value) > maxMetricIndexDigits {
+		return "", false
+	}
+
+	if value[0] < '0' || value[0] > '9' {
+		return "", false
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return "", false
+	}
+
+	return strconv.Itoa(parsed), true
+}
+
+// canonicalPCIValue accepts PCI addresses in the forms normalizePCI emits
+// (optional 8-hex domain, optional .function) and rewrites them to
+// domain:bus:device so mixed padding cannot split a series.
+func canonicalPCIValue(value string) (string, bool) {
+	parts := strings.Split(strings.ToLower(value), ":")
+	if len(parts) != 3 {
+		return "", false
+	}
+
+	domain, ok := parseBoundedHex(parts[0], 1, 8)
+	if !ok {
+		return "", false
+	}
+
+	bus, ok := parseBoundedHex(parts[1], 1, 2)
+	if !ok {
+		return "", false
+	}
+
+	devicePart, function, hasFunction := strings.Cut(parts[2], ".")
+	if hasFunction {
+		if _, validFunction := parseBoundedHex(function, 1, 2); !validFunction {
+			return "", false
+		}
+	}
+
+	device, ok := parseBoundedHex(devicePart, 1, 2)
+	if !ok {
+		return "", false
+	}
+
+	return fmt.Sprintf("%04x:%02x:%02x", domain&0xffff, bus, device), true
+}
+
+func canonicalNICValue(value string) (string, bool) {
+	if len(value) == 0 || len(value) > maxNICMetricValueLen {
+		return "", false
+	}
+
+	for i, r := range value {
+		isAlnum := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+		if isAlnum {
+			continue
+		}
+
+		if i > 0 && (r == '_' || r == '.' || r == '-') {
+			continue
+		}
+
+		return "", false
+	}
+
+	return value, true
+}
+
+func canonicalMetricEntityValue(canonicalType, entityValue string) (string, bool) {
+	switch canonicalType {
+	case entityTypeGPU, entityTypeGPC, entityTypeTPC, entityTypeNVLINK, entityTypeNICPort:
+		return canonicalBoundedIndex(entityValue)
+	case entityTypePCI:
+		return canonicalPCIValue(entityValue)
+	case entityTypeNIC:
+		return canonicalNICValue(entityValue)
+	default:
+		return "", false
+	}
+}
+
 // metricSafeEntities returns the triggering event's impacted entities that are
 // safe Prometheus labels: stable slot identity, not GPU UUID, SM, or register
 // values. Types are rewritten to the documented canonical spelling so mixed
-// case cannot split a series. Duplicates are dropped. The returned entities
-// are copies and do not mutate the triggering event.
+// case cannot split a series. Values are rewritten to a bounded form for that
+// type; malformed values are dropped. Duplicates are dropped. The returned
+// entities are copies and do not mutate the triggering event.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	seen := make(map[string]struct{}, len(event.GetEntitiesImpacted()))
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
@@ -92,7 +197,12 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 			continue
 		}
 
-		key := canonicalType + "\x00" + entityValue
+		canonicalValue, ok := canonicalMetricEntityValue(canonicalType, entityValue)
+		if !ok {
+			continue
+		}
+
+		key := canonicalType + "\x00" + canonicalValue
 		if _, exists := seen[key]; exists {
 			continue
 		}
@@ -101,7 +211,7 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 
 		out = append(out, &protos.Entity{
 			EntityType:  canonicalType,
-			EntityValue: entityValue,
+			EntityValue: canonicalValue,
 		})
 	}
 
