@@ -229,6 +229,30 @@ func TestMetricSafeEntities(t *testing.T) {
 			wantType: []string{"TPC"},
 			wantVal:  []string{"2"},
 		},
+		{
+			name: "keeps PCI domain and function boundaries",
+			event: &protos.HealthEvent{
+				EntitiesImpacted: []*protos.Entity{
+					{EntityType: "PCI", EntityValue: "ffff:01:00.7"},
+					{EntityType: "PCI", EntityValue: "0000ffff:1:0.0"},
+				},
+			},
+			wantType: []string{"PCI"},
+			wantVal:  []string{"ffff:01:00"},
+		},
+		{
+			name: "drops out-of-range PCI domain and function",
+			event: &protos.HealthEvent{
+				EntitiesImpacted: []*protos.Entity{
+					{EntityType: "PCI", EntityValue: "00010000:01:00.0"},
+					{EntityType: "PCI", EntityValue: "0000:01:00.8"},
+					{EntityType: "PCI", EntityValue: "0000:01:00.08"},
+					{EntityType: "GPC", EntityValue: "1"},
+				},
+			},
+			wantType: []string{"GPC"},
+			wantVal:  []string{"1"},
+		},
 	}
 
 	for _, tt := range tests {

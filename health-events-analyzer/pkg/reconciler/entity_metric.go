@@ -35,6 +35,8 @@ const (
 	entityTypeNICPort         = "NICPort"
 	entitiesImpactedFieldName = "entitiesimpacted"
 	maxMetricIndexDigits      = 4
+	maxPCIDomain              = 0xffff
+	maxPCIFunction            = 7
 )
 
 // metricSafeEntityTypes maps a case-insensitive entity type to the documented
@@ -114,7 +116,7 @@ func canonicalPCIValue(value string) (string, bool) {
 	}
 
 	domain, ok := parseBoundedHex(parts[0], 1, 8)
-	if !ok {
+	if !ok || domain > maxPCIDomain {
 		return "", false
 	}
 
@@ -124,9 +126,9 @@ func canonicalPCIValue(value string) (string, bool) {
 	}
 
 	devicePart, function, hasFunction := strings.Cut(parts[2], ".")
-	_, validFunction := parseBoundedHex(function, 1, 2)
+	parsedFunction, validFunction := parseBoundedHex(function, 1, 2)
 
-	if hasFunction && !validFunction {
+	if hasFunction && (!validFunction || parsedFunction > maxPCIFunction) {
 		return "", false
 	}
 
@@ -135,7 +137,7 @@ func canonicalPCIValue(value string) (string, bool) {
 		return "", false
 	}
 
-	return fmt.Sprintf("%04x:%02x:%02x", domain&0xffff, bus, device), true
+	return fmt.Sprintf("%04x:%02x:%02x", domain, bus, device), true
 }
 
 func canonicalNICValue(value string) (string, bool) {
