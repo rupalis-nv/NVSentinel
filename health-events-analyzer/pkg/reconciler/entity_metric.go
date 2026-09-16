@@ -72,7 +72,7 @@ func canonicalPCIValue(value string) (string, bool) {
 
 func canonicalMetricEntityValue(entityType, entityValue string) (string, bool) {
 	switch strings.ToLower(entityType) {
-	case "gpu", "gpc", "tpc", "nvlink", "nicport":
+	case "gpu", "gpc", "tpc", "sm", "nvlink", "nicport":
 		return entityValue, true
 	case "pci":
 		return canonicalPCIValue(entityValue)
@@ -98,10 +98,11 @@ func ruleSelectsOnEntity(rule config.HealthEventsAnalyzerRule) bool {
 }
 
 // metricSafeEntities returns copies of the triggering event's impacted
-// entities that are safe Prometheus labels. Only PCI, GPU, GPC, TPC, NVLINK,
-// NIC, NICPort, and NVSwitch are kept, using the producer spelling. GPU UUID
-// is omitted. PCI is rewritten to domain:bus:device; other values are used
-// as received. Malformed PCI and overlong NIC/NVSwitch values are dropped.
+// entities that are safe Prometheus labels. Only PCI, GPU, GPC, TPC, SM,
+// NVLINK, NIC, NICPort, and NVSwitch are kept, using the producer spelling.
+// GPU UUID is omitted. PCI is rewritten to domain:bus:device; other values
+// are used as received. Malformed PCI and overlong NIC/NVSwitch values are
+// dropped.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
 
