@@ -101,10 +101,8 @@ func ruleSelectsOnEntity(rule config.HealthEventsAnalyzerRule) bool {
 // entities that are safe Prometheus labels. Only PCI, GPU, GPC, TPC, NVLINK,
 // NIC, NICPort, and NVSwitch are kept, using the producer spelling. GPU UUID
 // is omitted. PCI is rewritten to domain:bus:device; other values are used
-// as received. Malformed PCI, overlong NIC/NVSwitch values, and duplicates
-// are dropped.
+// as received. Malformed PCI and overlong NIC/NVSwitch values are dropped.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
-	seen := make(map[string]struct{}, len(event.GetEntitiesImpacted()))
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
 
 	for _, entity := range event.GetEntitiesImpacted() {
@@ -119,13 +117,6 @@ func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 		if !ok {
 			continue
 		}
-
-		key := strings.ToLower(entityType) + "\x00" + canonicalValue
-		if _, exists := seen[key]; exists {
-			continue
-		}
-
-		seen[key] = struct{}{}
 
 		out = append(out, &protos.Entity{
 			EntityType:  entityType,
