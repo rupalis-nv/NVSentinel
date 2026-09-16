@@ -36,25 +36,6 @@ func parseBoundedHex(value string, minLen, maxLen int) (uint64, bool) {
 	return parsed, true
 }
 
-// canonicalBoundedIndex accepts the decimal GPU / GPC / TPC / NVLINK / NICPort
-// identifiers the XID handlers copy from syslog metadata.
-func canonicalBoundedIndex(value string) (string, bool) {
-	if len(value) == 0 || len(value) > 4 {
-		return "", false
-	}
-
-	if value[0] < '0' || value[0] > '9' {
-		return "", false
-	}
-
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed < 0 {
-		return "", false
-	}
-
-	return strconv.Itoa(parsed), true
-}
-
 // canonicalPCIValue accepts PCI addresses in the forms normalizePCI emits
 // (optional 8-hex domain, optional .function) and rewrites them to
 // domain:bus:device so mixed padding cannot split a series.
@@ -92,7 +73,7 @@ func canonicalPCIValue(value string) (string, bool) {
 func canonicalMetricEntityValue(entityType, entityValue string) (string, bool) {
 	switch strings.ToLower(entityType) {
 	case "gpu", "gpc", "tpc", "nvlink", "nicport":
-		return canonicalBoundedIndex(entityValue)
+		return entityValue, true
 	case "pci":
 		return canonicalPCIValue(entityValue)
 	case "nic", "nvswitch":
@@ -119,8 +100,9 @@ func ruleSelectsOnEntity(rule config.HealthEventsAnalyzerRule) bool {
 // metricSafeEntities returns copies of the triggering event's impacted
 // entities that are safe Prometheus labels. Only PCI, GPU, GPC, TPC, NVLINK,
 // NIC, NICPort, and NVSwitch are kept, using the producer spelling. GPU UUID
-// is omitted. Values are rewritten to a bounded form; malformed values and
-// duplicates are dropped.
+// is omitted. PCI is rewritten to domain:bus:device; other values are used
+// as received. Malformed PCI, overlong NIC/NVSwitch values, and duplicates
+// are dropped.
 func metricSafeEntities(event *protos.HealthEvent) []*protos.Entity {
 	seen := make(map[string]struct{}, len(event.GetEntitiesImpacted()))
 	out := make([]*protos.Entity, 0, len(event.GetEntitiesImpacted()))
