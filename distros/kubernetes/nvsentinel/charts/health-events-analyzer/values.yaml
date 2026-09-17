@@ -2663,6 +2663,28 @@ config: |
       {
         "$match": {
           "$expr": {
+            "$and": [
+              {
+                "$gte": [
+                  "$healthevent.generatedtimestamp.seconds",
+                  {"$subtract": ["this.healthevent.generatedtimestamp.seconds", 86400]}
+                ]
+              },
+              {
+                "$lte": [
+                  "$healthevent.generatedtimestamp.seconds",
+                  "this.healthevent.generatedtimestamp.seconds"
+                ]
+              }
+            ]
+          }
+        }
+      }
+      ''',
+      '''
+      {
+        "$match": {
+          "$expr": {
             "$eq": [
               "this.healthevent.errorcode.0",
               "74"
@@ -2713,6 +2735,7 @@ config: |
         }
       }
       ''',
+      '{"$limit": 1}'
     ]
 
     [[rules]]
